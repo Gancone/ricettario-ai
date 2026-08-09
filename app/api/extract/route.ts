@@ -1,7 +1,15 @@
 import OpenAI from "openai";
 import { execFile } from "child_process";
 import { promisify } from "util";
-import { mkdtemp, readFile, readdir, rm, writeFile } from "fs/promises";
+import {
+  access,
+  chmod,
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+  writeFile
+} from "fs/promises";
 import { tmpdir } from "os";
 import path from "path";
 
@@ -10,269 +18,599 @@ export const maxDuration = 300;
 
 const exec = promisify(execFile);
 
+const IS_WINDOWS = process.platform === "win32";
+
+const YTDLP_PATH = IS_WINDOWS
+  ? "yt-dlp"
+  : path.join(tmpdir(), "yt-dlp");
+
 function safeJson(text: string) {
-  const cleaned = text.trim().replace(/^```json\s*/i, "").replace(/```$/i, "").trim();
+  const cleaned = text
+    .trim()
+    .replace(/^```json\s*/i, "")
+    .replace(/^```\s*/i, "")
+    .replace(/```$/i, "")
+    .trim();
+
   return JSON.parse(cleaned);
 }
 
-async function run(command: string, args: string[]) {
+async function run(
+  command: string,
+  args: string[]
+) {
   return exec(command, args, {
-    maxBuffer: 30 * 1024 * 1024,
-    windowsHide: true
+    maxBuffer: 30 * 1024 * 1024
   });
 }
 
-async function checkYtDlp() {
+/*
+ * Vercel non ha yt-dlp installato.
+ * Lo scarichiamo in /tmp alla prima richiesta.
+ */
+async function ensureYtDlp() {
+
+  // In locale su Windows usiamo yt-dlp già installato
+  if (IS_WINDOWS) {
+    try {
+      const version = await run(
+        "yt-dlp",
+        ["--version"]
+      );
+
+      return version.stdout.trim();
+
+    } catch {
+      throw new Error(
+        "yt-dlp non risulta disponibile su Windows. " +
+        "Prova nel terminale: yt-dlp --version"
+      );
+    }
+  }
+
+  // Su Vercel/Linux proviamo prima il file già presente in /tmp
   try {
-    const r = await run("yt-dlp", ["--version"]);
-    return r.stdout.trim();
-  } catch (e: any) {
-    throw new Error(
-      "yt-dlp non risulta installato o non è nel PATH di Windows. " +
-      "Apri un nuovo terminale e prova: yt-dlp --version"
+    await access(YTDLP_PATH);
+
+    const version = await run(
+      YTDLP_PATH,
+      ["--version"]
     );
+
+    return version.stdout.trim();
+
+  } catch {
+    // Se non esiste, lo scarichiamo
+  }
+
+  const response = await fetch(
+    "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp"
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      "Non riesco a scaricare yt-dlp sul server."
+    );
+  }
+
+  const buffer = Buffer.from(
+    await response.arrayBuffer()
+  );
+
+  await writeFile(
+    YTDLP_PATH,
+    buffer
+  );
+
+  await chmod(
+    YTDLP_PATH,
+    0o755
+  );
+
+  const version = await run(
+    YTDLP_PATH,
+    ["--version"]
+  );
+
+  return version.stdout.trim();
+}
+
+async function getMetadata(
+  url: string
+) {
+  try {
+    const info = await run(
+      YTDLP_PATH,
+      [
+        "--no-playlist",
+
+        "--print",
+        "%(title)s|||%(description)s|||%(thumbnail)s",
+
+        "--skip-download",
+
+        url
+      ]
+    );
+
+    const output =
+      info.stdout.trim();
+
+    if (!output) {
+      return {
+        text: "",
+        thumbnail: ""
+      };
+    }
+
+    const parts =
+      output.split("|||");
+
+    return {
+      text:
+        `${parts[0] || ""}\n${parts[1] || ""
+        }`,
+
+      thumbnail:
+        parts[2]?.trim() || ""
+    };
+
+  } catch {
+    return {
+      text: "",
+      thumbnail: ""
+    };
   }
 }
 
-async function downloadWithYtDlp(url: string, workdir: string) {
-  const outputTemplate = path.join(workdir, "source.%(ext)s");
-  const attempts: { label: string; args: string[] }[] = [
-    {
-      label: "senza login",
-      args: ["--no-playlist", "-f", "bestaudio/best", "-o", outputTemplate, url]
-    },
-    {
-      label: "con cookie Chrome",
-      args: ["--cookies-from-browser", "chrome", "--no-playlist", "-f", "bestaudio/best", "-o", outputTemplate, url]
-    },
-    {
-      label: "con cookie Edge",
-      args: ["--cookies-from-browser", "edge", "--no-playlist", "-f", "bestaudio/best", "-o", outputTemplate, url]
-    }
-  ];
+async function downloadMedia(
+  url: string,
+  workdir: string
+) {
 
-  const errors: string[] = [];
+  const outputTemplate =
+    path.join(
+      workdir,
+      "source.%(ext)s"
+    );
 
-  for (const attempt of attempts) {
-    try {
-      await run("yt-dlp", attempt.args);
-      const files = await readdir(workdir);
-      const found = files.find(f => f.startsWith("source."));
-      if (found) return { mediaPath: path.join(workdir, found), method: attempt.label };
-    } catch (e: any) {
-      const stderr = String(e?.stderr || e?.message || "").trim();
-      errors.push(`${attempt.label}: ${stderr.slice(-1600)}`);
-    }
+  try {
+
+    /*
+     * Cerchiamo un formato compatibile
+     * direttamente con OpenAI.
+     */
+    await run(
+      YTDLP_PATH,
+      [
+        "--no-playlist",
+
+        "-f",
+        "bestaudio[ext=m4a]/bestaudio[ext=webm]/best[ext=mp4]/best",
+
+        "-o",
+        outputTemplate,
+
+        url
+      ]
+    );
+
+  } catch (error: any) {
+
+    const details =
+      String(
+        error?.stderr ||
+        error?.message ||
+        ""
+      );
+
+    throw new Error(
+      "yt-dlp non riesce a leggere questo video. " +
+      "Il contenuto potrebbe richiedere login oppure Instagram/TikTok potrebbe bloccare il server.\n\n" +
+      details.slice(-1500)
+    );
   }
 
-  throw new Error(
-    "yt-dlp non è riuscito a leggere il video.\n\n" +
-    errors.join("\n\n") +
-    "\n\nSe il video è Instagram/TikTok, aprilo prima nel browser in cui sei già autenticato e riprova."
+  const files =
+    await readdir(workdir);
+
+  const mediaFile =
+    files.find(
+      file =>
+        file.startsWith("source.")
+    );
+
+  if (!mediaFile) {
+    throw new Error(
+      "Il video è stato elaborato ma non trovo il file scaricato."
+    );
+  }
+
+  return path.join(
+    workdir,
+    mediaFile
   );
 }
 
-async function getMetadata(url: string) {
-  const attempts = [
-    [
-      "--no-playlist",
-      "--print",
-      "%(title)s|||%(description)s|||%(thumbnail)s",
-      "--skip-download",
-      url
-    ],
-    [
-      "--cookies-from-browser",
-      "chrome",
-      "--no-playlist",
-      "--print",
-      "%(title)s|||%(description)s|||%(thumbnail)s",
-      "--skip-download",
-      url
-    ],
-    [
-      "--cookies-from-browser",
-      "edge",
-      "--no-playlist",
-      "--print",
-      "%(title)s|||%(description)s|||%(thumbnail)s",
-      "--skip-download",
-      url
-    ]
-  ];
+export async function POST(
+  request: Request
+) {
 
-  for (const args of attempts) {
-    try {
-      const info = await run("yt-dlp", args);
-
-      if (info.stdout.trim()) {
-        const parts = info.stdout.trim().split("|||");
-
-        return {
-          text: `${parts[0] || ""}\n${parts[1] || ""}`,
-          thumbnail: parts[2]?.trim() || ""
-        };
-      }
-    } catch { }
-  }
-
-  return {
-    text: "",
-    thumbnail: ""
-  };
-}
-
-export async function POST(request: Request) {
   let workdir = "";
+
   try {
-    if (!process.env.OPENAI_API_KEY) {
+
+    if (
+      !process.env.OPENAI_API_KEY
+    ) {
+
       return Response.json(
-        { error: "Manca OPENAI_API_KEY nel file .env.local." },
-        { status: 500 }
+        {
+          error:
+            "Manca OPENAI_API_KEY nelle variabili d'ambiente."
+        },
+        {
+          status: 500
+        }
       );
+
     }
 
-    const form = await request.formData();
-    const sourceUrl = String(form.get("sourceUrl") || "").trim();
-    const sourceText = String(form.get("sourceText") || "").trim();
-    const uploaded = form.get("video") as File | null;
+    const form =
+      await request.formData();
 
-    if (!sourceUrl && !sourceText && (!uploaded || uploaded.size === 0)) {
-      return Response.json({ error: "Incolla un link oppure carica un video." }, { status: 400 });
+    const sourceUrl =
+      String(
+        form.get("sourceUrl") || ""
+      ).trim();
+
+    const sourceText =
+      String(
+        form.get("sourceText") || ""
+      ).trim();
+
+    const uploaded =
+      form.get("video") as
+      | File
+      | null;
+
+    if (
+      !sourceUrl &&
+      !sourceText &&
+      (
+        !uploaded ||
+        uploaded.size === 0
+      )
+    ) {
+
+      return Response.json(
+        {
+          error:
+            "Incolla un link oppure carica un video."
+        },
+        {
+          status: 400
+        }
+      );
+
     }
 
-    workdir = await mkdtemp(path.join(tmpdir(), "ricetta-"));
+    workdir =
+      await mkdtemp(
+        path.join(
+          tmpdir(),
+          "ricetta-"
+        )
+      );
+
     let mediaPath = "";
+
     let metadataText = "";
+
     let thumbnailUrl = "";
+
     let downloadMethod = "";
 
+    /*
+     * SE C'È UN LINK
+     */
     if (sourceUrl) {
-      await checkYtDlp();
-      const metadata = await getMetadata(sourceUrl);
 
-      metadataText = metadata.text;
-      thumbnailUrl = metadata.thumbnail;
+      await ensureYtDlp();
+
+      const metadata =
+        await getMetadata(
+          sourceUrl
+        );
+
+      metadataText =
+        metadata.text;
+
+      thumbnailUrl =
+        metadata.thumbnail;
 
       try {
-        const dl = await downloadWithYtDlp(sourceUrl, workdir);
-        mediaPath = dl.mediaPath;
-        downloadMethod = dl.method;
-      } catch (e: any) {
-        if (!uploaded || uploaded.size === 0) {
-          return Response.json(
-            { error: e?.message || "Impossibile recuperare il video." },
-            { status: 400 }
+
+        mediaPath =
+          await downloadMedia(
+            sourceUrl,
+            workdir
           );
+
+        downloadMethod =
+          "link";
+
+      } catch (error: any) {
+
+        /*
+         * Se c'è anche un file manuale,
+         * continuiamo con quello.
+         */
+        if (
+          !uploaded ||
+          uploaded.size === 0
+        ) {
+
+          return Response.json(
+            {
+              error:
+                error?.message ||
+                "Impossibile recuperare il video."
+            },
+            {
+              status: 400
+            }
+          );
+
         }
       }
     }
 
-    if (!mediaPath && uploaded && uploaded.size > 0) {
-      mediaPath = path.join(workdir, uploaded.name || "upload.mp4");
-      await writeFile(mediaPath, Buffer.from(await uploaded.arrayBuffer()));
-      downloadMethod = "file caricato";
+    /*
+     * FALLBACK:
+     * file caricato manualmente.
+     */
+    if (
+      !mediaPath &&
+      uploaded &&
+      uploaded.size > 0
+    ) {
+
+      const extension =
+        path.extname(
+          uploaded.name
+        ) || ".mp4";
+
+      mediaPath =
+        path.join(
+          workdir,
+          `upload${extension}`
+        );
+
+      const bytes =
+        Buffer.from(
+          await uploaded.arrayBuffer()
+        );
+
+      await writeFile(
+        mediaPath,
+        bytes
+      );
+
+      downloadMethod =
+        "file caricato";
     }
 
-    const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-    let transcript = sourceText;
-
-    if (mediaPath) {
-      let audioPath = mediaPath;
-      try {
-        const mp3 = path.join(workdir, "audio.mp3");
-        await run("ffmpeg", [
-          "-y", "-i", mediaPath, "-vn",
-          "-ac", "1", "-ar", "16000",
-          "-b:a", "64k", mp3
-        ]);
-        audioPath = mp3;
-      } catch {
-        // Prova comunque il file originale.
-      }
-
-      const tr = await client.audio.transcriptions.create({
-        file: await OpenAI.toFile(await readFile(audioPath), path.basename(audioPath)),
-        model: "gpt-4o-mini-transcribe"
+    const client =
+      new OpenAI({
+        apiKey:
+          process.env.OPENAI_API_KEY
       });
-      transcript = [transcript, tr.text].filter(Boolean).join("\n\n");
+
+    let transcript =
+      sourceText;
+
+    /*
+     * TRASCRIZIONE
+     *
+     * Non usiamo più FFmpeg.
+     */
+    if (mediaPath) {
+
+      const buffer =
+        await readFile(
+          mediaPath
+        );
+
+      const fileName =
+        path.basename(
+          mediaPath
+        );
+
+      const transcription =
+        await client
+          .audio
+          .transcriptions
+          .create({
+            file:
+              await OpenAI.toFile(
+                buffer,
+                fileName
+              ),
+
+            model:
+              "gpt-4o-mini-transcribe"
+          });
+
+      transcript = [
+        transcript,
+        transcription.text
+      ]
+        .filter(Boolean)
+        .join("\n\n");
     }
 
-    const context = [metadataText, transcript].filter(Boolean).join("\n\n---\n\n");
+    const context = [
+      metadataText,
+      transcript
+    ]
+      .filter(Boolean)
+      .join(
+        "\n\n---\n\n"
+      );
 
-    if (!context.trim()) {
-      return Response.json({ error: "Non sono riuscito a ricavare testo dal contenuto." }, { status: 400 });
+    if (
+      !context.trim()
+    ) {
+
+      return Response.json(
+        {
+          error:
+            "Non sono riuscito a ricavare testo dal contenuto."
+        },
+        {
+          status: 400
+        }
+      );
+
     }
 
-    const response = await client.responses.create({
-      model: "gpt-5",
-      store: false,
-      input: `Trasforma questo contenuto in una ricetta italiana chiara e fedele.
+    /*
+     * CREAZIONE RICETTA
+     */
+    const response =
+      await client.responses.create({
+
+        model:
+          "gpt-5",
+
+        store:
+          false,
+
+        input: `
+Trasforma questo contenuto in una ricetta italiana chiara e fedele.
 
 REGOLE:
+
 - Usa titolo, descrizione/didascalia e trascrizione.
-- Non inventare quantità, ingredienti, temperature, tempi o passaggi.
-- Se una quantità manca, inserisci solo il nome dell'ingrediente.
-- Se qualcosa è dubbio, scrivilo nelle note.
-- Elimina saluti, sponsor e parti non pertinenti.
-- Rispondi SOLO con JSON valido:
+- Non inventare quantità di ingredienti se non sono ricavabili.
+- Se una quantità manca, inserisci soltanto il nome dell'ingrediente.
+- Elimina saluti, sponsor e contenuti non pertinenti.
+- Se qualcosa è dubbio, indicalo nelle note.
+- Puoi stimare i tempi di preparazione e cottura quando non sono dichiarati.
+- I valori nutrizionali devono essere calcolati PER PORZIONE.
+- I valori nutrizionali sono stime quando gli ingredienti o le quantità non sono sufficientemente precisi.
+- calories è espresso in kcal.
+- protein, carbs, fat, sugars, fiber e salt sono espressi in grammi.
+- totalTimeMinutes deve rappresentare il tempo totale realistico.
+- Rispondi SOLO con JSON valido, senza markdown.
+
+FORMATO:
 
 {
   "title": "string",
-  "ingredients": ["string"],
-  "steps": ["string"],
+
+  "ingredients": [
+    "string"
+  ],
+
+  "steps": [
+    "string"
+  ],
+
   "notes": "string",
 
   "prepTimeMinutes": 0,
+
   "cookTimeMinutes": 0,
+
   "totalTimeMinutes": 0,
+
   "servings": 0,
 
   "nutrition": {
+
     "calories": 0,
+
     "protein": 0,
+
     "carbs": 0,
+
     "fat": 0,
+
     "sugars": 0,
+
     "fiber": 0,
+
     "salt": 0,
+
     "estimated": true
   }
-    VALORI NUTRIZIONALI:
-
-- I valori nutrizionali devono essere PER PORZIONE.
-- calories è espresso in kcal.
-- protein, carbs, fat, sugars, fiber e salt sono espressi in grammi.
-- Calcola i valori usando le quantità degli ingredienti quando disponibili.
-- Se mancano quantità sufficienti, fai solo una stima ragionevole e imposta "estimated": true.
-- Se i dati sono sufficientemente chiari, imposta "estimated": false.
-- Non inventare tempi dichiarati nel video. Se non vengono indicati, puoi stimare un tempo realistico.
-- totalTimeMinutes deve rappresentare preparazione + cottura.
 }
 
-URL:
+URL FONTE:
+
 ${sourceUrl || "nessuno"}
 
 CONTENUTO:
-${context}`
-    });
 
-    const recipe = safeJson(response.output_text);
+${context}
+`
+      });
+
+    const recipe =
+      safeJson(
+        response.output_text
+      );
 
     return Response.json({
       ...recipe,
-      imageUrl: thumbnailUrl,
-      _debug: downloadMethod ? `Video recuperato ${downloadMethod}` : ""
+
+      imageUrl:
+        thumbnailUrl,
+
+      _debug:
+        downloadMethod
+          ? `Video recuperato tramite ${downloadMethod}`
+          : ""
     });
+
   } catch (error: any) {
-    console.error(error);
-    return Response.json(
-      { error: error?.message || "Errore durante l'estrazione." },
-      { status: 500 }
+
+    console.error(
+      "EXTRACT ERROR:",
+      error
     );
+
+    return Response.json(
+      {
+        error:
+          error?.message ||
+          "Errore durante l'estrazione."
+      },
+      {
+        status: 500
+      }
+    );
+
   } finally {
+
     if (workdir) {
-      try { await rm(workdir, { recursive: true, force: true }); } catch { }
+
+      try {
+
+        await rm(
+          workdir,
+          {
+            recursive: true,
+            force: true
+          }
+        );
+
+      } catch {
+        // niente
+      }
+
     }
   }
 }

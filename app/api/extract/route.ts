@@ -84,7 +84,7 @@ async function ensureYtDlp() {
   }
 
   const response = await fetch(
-    "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp"
+    "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux"
   );
 
   if (!response.ok) {

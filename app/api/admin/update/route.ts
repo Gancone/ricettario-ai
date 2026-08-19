@@ -1,17 +1,12 @@
 import AdmZip from "adm-zip";
-import crypto from "crypto";
+import { isTrustedUpdateDevice } from "@/lib/update-auth";
+import { createDatabaseSnapshot } from "@/lib/data-safety";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
 const MAX_ZIP_BYTES = 4 * 1024 * 1024;
 const MAX_FILES = 180;
-
-function safeEqual(a: string, b: string) {
-  const aa = Buffer.from(a);
-  const bb = Buffer.from(b);
-  return aa.length === bb.length && crypto.timingSafeEqual(aa, bb);
-}
 
 function cleanPath(value: string) {
   return value.replace(/\\/g, "/").replace(/^\.\//, "").replace(/^\/+/, "");
@@ -76,13 +71,15 @@ export async function POST(request: Request) {
       );
     }
 
-    const form = await request.formData();
-    const suppliedPassword = String(form.get("password") || "");
-    const file = form.get("file") as File | null;
-
-    if (!safeEqual(suppliedPassword, password)) {
-      return Response.json({ error: "Password aggiornamento non corretta." }, { status: 401 });
+    if (!isTrustedUpdateDevice(request, password)) {
+      return Response.json({ error: "Questo dispositivo non è autorizzato agli aggiornamenti." }, { status: 401 });
     }
+
+    // Prima di ogni aggiornamento viene salvata una copia indipendente dei dati su Supabase Storage.
+    await createDatabaseSnapshot("pre-update").catch(() => {});
+
+    const form = await request.formData();
+    const file = form.get("file") as File | null;
     if (!file || file.size === 0) {
       return Response.json({ error: "Seleziona il file ZIP dell'aggiornamento." }, { status: 400 });
     }

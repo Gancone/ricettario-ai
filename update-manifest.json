@@ -1,8 +1,8 @@
 {
   "name": "Ricettario AI",
-  "version": "4.0.1",
+  "version": "5.0.0",
   "channel": "stable",
-  "description": "Nuova interfaccia mobile-first, PDF con foto, categorie sincronizzate, immagini persistenti, lista spesa e aggiornamenti ZIP dall'app.",
+  "description": "Versione Fortress: protezione dati multilivello, backup automatici, recupero ricette, immagini persistenti e interfaccia mobile completamente ridisegnata.",
   "delete": [],
-  "notes": "Riparazione installazione: sostituzione pulita delle cartelle dell'app per evitare percorsi duplicati come app/app e file lib mancanti."
+  "notes": "Gli aggiornamenti non modificano o cancellano il database. Prima di ogni aggiornamento viene creato un backup su Supabase Storage; ogni salvataggio aggiorna anche una copia locale. La cancellazione permanente delle ricette è disattivata."
 }

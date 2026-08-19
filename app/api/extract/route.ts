@@ -1,91 +1,11 @@
 import OpenAI from "openai";
-import { execFile } from "child_process";
-import { promisify } from "util";
-import { access, chmod, mkdtemp, readFile, readdir, rm, writeFile } from "fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import path from "path";
+import { downloadYtDlpMedia, downloadYtDlpThumbnailDataUrl, getYtDlpMetadata } from "@/lib/ytdlp";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
-
-const exec = promisify(execFile);
-const IS_WINDOWS = process.platform === "win32";
-const YTDLP_PATH = IS_WINDOWS ? "yt-dlp" : path.join(tmpdir(), "ricettario-yt-dlp-linux");
-
-async function run(command: string, args: string[]) {
-  return exec(command, args, { maxBuffer: 30 * 1024 * 1024, windowsHide: true });
-}
-
-async function ensureYtDlp() {
-  if (IS_WINDOWS) {
-    try {
-      await run("yt-dlp", ["--version"]);
-      return;
-    } catch {
-      throw new Error("yt-dlp non è disponibile sul PC. Installa yt-dlp oppure usa il sito pubblicato su Vercel.");
-    }
-  }
-
-  try {
-    await access(YTDLP_PATH);
-    await run(YTDLP_PATH, ["--version"]);
-    return;
-  } catch {}
-
-  const response = await fetch("https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux", {
-    signal: AbortSignal.timeout(45000)
-  });
-  if (!response.ok) throw new Error("Non riesco a preparare il motore di importazione video sul server.");
-
-  await writeFile(YTDLP_PATH, Buffer.from(await response.arrayBuffer()));
-  await chmod(YTDLP_PATH, 0o755);
-  await run(YTDLP_PATH, ["--version"]);
-}
-
-async function getMetadata(url: string) {
-  try {
-    const info = await run(YTDLP_PATH, [
-      "--no-playlist",
-      "--no-warnings",
-      "--skip-download",
-      "--dump-single-json",
-      url
-    ]);
-    const json = JSON.parse(info.stdout);
-    return {
-      text: [json.title, json.description].filter(Boolean).join("\n\n"),
-      thumbnail: String(json.thumbnail || "")
-    };
-  } catch {
-    return { text: "", thumbnail: "" };
-  }
-}
-
-async function downloadMedia(url: string, workdir: string) {
-  const output = path.join(workdir, "source.%(ext)s");
-  try {
-    await run(YTDLP_PATH, [
-      "--no-playlist",
-      "--no-warnings",
-      "--socket-timeout", "20",
-      "--retries", "1",
-      "-f", "bestaudio[ext=m4a]/bestaudio[ext=webm]/best[ext=mp4]/best",
-      "-o", output,
-      url
-    ]);
-  } catch (error: any) {
-    const details = String(error?.stderr || error?.message || "").trim();
-    throw new Error(
-      "Il social non ha permesso di leggere automaticamente il video. Il post può richiedere login oppure bloccare i server cloud." +
-      (details ? `\n\nDettaglio: ${details.slice(-900)}` : "")
-    );
-  }
-
-  const files = await readdir(workdir);
-  const found = files.find((f) => f.startsWith("source."));
-  if (!found) throw new Error("Il video è stato letto ma non trovo il file multimediale.");
-  return path.join(workdir, found);
-}
 
 function asNumber(value: unknown) {
   const n = Number(value);
@@ -139,13 +59,12 @@ export async function POST(request: Request) {
     let warning = "";
 
     if (sourceUrl) {
-      await ensureYtDlp();
-      const metadata = await getMetadata(sourceUrl);
+      const metadata = await getYtDlpMetadata(sourceUrl);
       metadataText = metadata.text;
-      thumbnailUrl = metadata.thumbnail;
+      thumbnailUrl = await downloadYtDlpThumbnailDataUrl(sourceUrl, workdir) || metadata.thumbnail;
 
       try {
-        mediaPath = await downloadMedia(sourceUrl, workdir);
+        mediaPath = await downloadYtDlpMedia(sourceUrl, workdir);
       } catch (error: any) {
         warning = error?.message || "Video non accessibile";
         if (!metadataText.trim() && !sourceText && (!uploaded || uploaded.size === 0)) {

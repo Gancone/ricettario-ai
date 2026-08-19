@@ -1,105 +1,31 @@
-# Ricettario AI v4.0.1 — riparazione deploy
+# Ricettario AI v5 — Fortress
 
-Questa versione corregge l'installazione precedente. Il nuovo installatore elimina prima le cartelle gestite dell'app e poi le ricopia integralmente, evitando residui come `app/app` e file mancanti in `lib`.
+Versione progettata con priorità assoluta a stabilità, protezione dei dati e qualità mobile.
 
-Per installare/riparare su Windows:
-1. Estrai tutto lo ZIP.
-2. Fai doppio clic su `RIPARA-E-INSTALLA-V4.0.1.vbs`.
-3. Seleziona la cartella principale del progetto GitHub (quella con `.git` e `package.json`).
-4. Attendi il messaggio di completamento.
-5. Vercel eseguirà automaticamente un nuovo deploy.
+## Protezione dati
 
-Il file `.env.local` viene preservato e non viene caricato su GitHub.
+- Le ricette restano su Supabase e non fanno parte degli ZIP di aggiornamento.
+- La cancellazione permanente delle ricette dall'interfaccia/API è disattivata.
+- Ogni salvataggio o modifica crea un backup JSON automatico nel bucket privato `ricettario-backups` di Supabase Storage.
+- Prima di ogni aggiornamento ZIP viene creato un backup pre-aggiornamento.
+- Se la tabella recipes risultasse inaspettatamente vuota, l'app prova a ripristinare automaticamente l'ultimo backup.
+- Il browser mantiene anche una copia locale di sicurezza e può reinviarla a Supabase se trova ricette mancanti.
+- Il service worker non salva mai in cache le API delle ricette, evitando viste vuote/stale dopo un aggiornamento.
 
----
+## Immagini
 
-# Ricettario AI v4.0.0
+Le nuove estrazioni provano a recuperare la copertina del video e il salvataggio la rende persistente nel bucket `recipe-images`. Le ricette precedenti con fonte social e copertina mancante vengono riparate gradualmente in background.
 
-Versione mobile-first del ricettario personale.
+## Installazione della v5 su Windows
 
-## Cosa include
+1. Estrai completamente lo ZIP.
+2. Fai doppio clic su `INSTALLA-V5.vbs`.
+3. Se trova `C:\Users\Admin\Desktop\ricettario-ai-v3` la usa automaticamente; altrimenti chiede di scegliere la cartella del progetto GitHub.
+4. Lo script sostituisce solo il codice, conserva `.env.local`, fa commit e push.
+5. Aspetta che Vercel mostri `Ready`.
 
-- Ricette sincronizzate su Supabase
-- Cataloghi personalizzati sincronizzati
-- Import da link video con fallback a caricamento manuale
-- Trascrizione + ricetta con OpenAI
-- Tempi, porzioni e valori nutrizionali per porzione
-- Foto persistente: quando salvi una nuova ricetta, il server prova a copiare la cover in Supabase Storage
-- Ricette compatte a immagine, apertura in scheda completa
-- 20 ricette per pagina
-- Modalità cucina con ingredienti e passaggi spuntabili
-- Lista della spesa locale
-- PDF con foto della ricetta
-- Backup JSON
-- PWA installabile sulla Home del telefono
-- Aggiornamenti futuri via ZIP direttamente dall'app
+Lo script non esegue query distruttive e non modifica Supabase.
 
-## Variabili già usate
+## Aggiornamenti successivi
 
-Su Vercel devono esserci:
-
-- `OPENAI_API_KEY`
-- `SUPABASE_URL`
-- `SUPABASE_SERVICE_ROLE_KEY`
-
-## Aggiornamenti ZIP dall'app: configurazione una tantum
-
-Dopo aver installato questa v4, aggiungi su **Vercel → Project → Settings → Environment Variables**:
-
-- `GITHUB_OWNER` = il tuo username GitHub
-- `GITHUB_REPO` = nome del repository, per esempio `ricettario-ai`
-- `GITHUB_BRANCH` = `main`
-- `UPDATE_PASSWORD` = una password lunga scelta da te
-- `GITHUB_UPDATE_TOKEN` = token GitHub fine-grained con accesso solo a questo repository e permesso **Contents: Read and write**
-
-Poi fai un Redeploy una sola volta.
-
-Da quel momento, per i prossimi aggiornamenti:
-
-1. apri il sito;
-2. vai in **Impostazioni → Aggiornamenti ZIP**;
-3. trascina il nuovo ZIP che ti viene fornito;
-4. inserisci la password aggiornamenti;
-5. premi **Installa aggiornamento**.
-
-Il sito crea un commit su GitHub e Vercel fa automaticamente il deploy. Non serve più usare Prompt dei comandi.
-
-## Prima installazione della v4 senza Prompt
-
-Questa versione include `INSTALLA-V4.vbs` (senza Prompt dei comandi) e, come alternativa, `INSTALLA-V4.bat`.
-
-1. Estrai lo ZIP della v4.
-2. Fai doppio clic su `INSTALLA-V4.vbs`.
-3. Seleziona la cartella del progetto attuale collegata a GitHub.
-4. Lo script conserva `.env.local`, copia la v4, crea il commit e fa push.
-5. Vercel effettua il deploy automaticamente.
-
-Richiede che Git/GitHub siano già configurati sul PC, come lo sono stati per il deploy precedente.
-
-## Database
-
-La v4 usa la tabella `recipes` già esistente con queste colonne:
-
-- `id` uuid
-- `title` text
-- `source_url` text
-- `image_url` text
-- `category` text
-- `tags` text[]
-- `ingredients` text[]
-- `steps` text[]
-- `notes` text
-- `prep_time_minutes` integer
-- `cook_time_minutes` integer
-- `total_time_minutes` integer
-- `servings` integer
-- `nutrition` jsonb
-- `created_at` timestamptz
-
-E la tabella `categories` già creata con `id`, `name`, `created_at`.
-
-RLS può rimanere attivo: l'app accede a Supabase solo dal backend usando la chiave server-side.
-
-## Costi
-
-Le funzioni normali del ricettario (visualizzazione, ricerca, cataloghi, PDF, lista spesa, backup, aggiornamenti) non chiamano OpenAI. OpenAI viene usata solo quando chiedi di estrarre una nuova ricetta.
+Da v5 in poi usa Impostazioni → Aggiornamenti ZIP. Dopo l'autorizzazione iniziale del browser, la password non viene più chiesta per un anno su quel dispositivo. Prima di ogni aggiornamento viene creato automaticamente un backup dei dati.

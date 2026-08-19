@@ -1,7 +1,8 @@
 {
   "name": "Ricettario AI",
-  "version": "4.0.0",
+  "version": "4.0.1",
   "channel": "stable",
   "description": "Nuova interfaccia mobile-first, PDF con foto, categorie sincronizzate, immagini persistenti, lista spesa e aggiornamenti ZIP dall'app.",
-  "delete": []
+  "delete": [],
+  "notes": "Riparazione installazione: sostituzione pulita delle cartelle dell'app per evitare percorsi duplicati come app/app e file lib mancanti."
 }

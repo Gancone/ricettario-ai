@@ -1,3 +1,18 @@
+# Ricettario AI v4.0.1 — riparazione deploy
+
+Questa versione corregge l'installazione precedente. Il nuovo installatore elimina prima le cartelle gestite dell'app e poi le ricopia integralmente, evitando residui come `app/app` e file mancanti in `lib`.
+
+Per installare/riparare su Windows:
+1. Estrai tutto lo ZIP.
+2. Fai doppio clic su `RIPARA-E-INSTALLA-V4.0.1.vbs`.
+3. Seleziona la cartella principale del progetto GitHub (quella con `.git` e `package.json`).
+4. Attendi il messaggio di completamento.
+5. Vercel eseguirà automaticamente un nuovo deploy.
+
+Il file `.env.local` viene preservato e non viene caricato su GitHub.
+
+---
+
 # Ricettario AI v4.0.0
 
 Versione mobile-first del ricettario personale.

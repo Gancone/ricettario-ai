@@ -1,98 +1,90 @@
-# Il mio Ricettario AI — versione 2
+# Ricettario AI v4.0.0
 
-Questa versione prova prima a fare tutto dal **link del video**:
+Versione mobile-first del ricettario personale.
 
-1. incolli un URL pubblico di YouTube / TikTok / Instagram;
-2. il server usa `yt-dlp` per recuperare titolo, descrizione e contenuto multimediale;
-3. OpenAI trascrive l'audio;
-4. l'AI ricava ingredienti e procedimento;
-5. controlli e salvi la ricetta.
+## Cosa include
 
-Il caricamento manuale resta come fallback quando il social impedisce l'accesso automatico.
+- Ricette sincronizzate su Supabase
+- Cataloghi personalizzati sincronizzati
+- Import da link video con fallback a caricamento manuale
+- Trascrizione + ricetta con OpenAI
+- Tempi, porzioni e valori nutrizionali per porzione
+- Foto persistente: quando salvi una nuova ricetta, il server prova a copiare la cover in Supabase Storage
+- Ricette compatte a immagine, apertura in scheda completa
+- 20 ricette per pagina
+- Modalità cucina con ingredienti e passaggi spuntabili
+- Lista della spesa locale
+- PDF con foto della ricetta
+- Backup JSON
+- PWA installabile sulla Home del telefono
+- Aggiornamenti futuri via ZIP direttamente dall'app
 
-## Requisiti
+## Variabili già usate
 
-- Node.js recente
-- `yt-dlp`
-- `ffmpeg`
-- una `OPENAI_API_KEY`
+Su Vercel devono esserci:
 
-## Installazione macOS
+- `OPENAI_API_KEY`
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
 
-Con Homebrew:
+## Aggiornamenti ZIP dall'app: configurazione una tantum
 
-```bash
-brew install yt-dlp ffmpeg
-npm install
-```
+Dopo aver installato questa v4, aggiungi su **Vercel → Project → Settings → Environment Variables**:
 
-Poi crea `.env.local`:
+- `GITHUB_OWNER` = il tuo username GitHub
+- `GITHUB_REPO` = nome del repository, per esempio `ricettario-ai`
+- `GITHUB_BRANCH` = `main`
+- `UPDATE_PASSWORD` = una password lunga scelta da te
+- `GITHUB_UPDATE_TOKEN` = token GitHub fine-grained con accesso solo a questo repository e permesso **Contents: Read and write**
 
-```text
-OPENAI_API_KEY=sk-...
-```
+Poi fai un Redeploy una sola volta.
 
-Avvia:
+Da quel momento, per i prossimi aggiornamenti:
 
-```bash
-npm run dev
-```
+1. apri il sito;
+2. vai in **Impostazioni → Aggiornamenti ZIP**;
+3. trascina il nuovo ZIP che ti viene fornito;
+4. inserisci la password aggiornamenti;
+5. premi **Installa aggiornamento**.
 
-e apri `http://localhost:3000`.
+Il sito crea un commit su GitHub e Vercel fa automaticamente il deploy. Non serve più usare Prompt dei comandi.
 
-## Installazione Windows
+## Prima installazione della v4 senza Prompt
 
-1. Installa Node.js LTS.
-2. Installa `yt-dlp` seguendo: https://github.com/yt-dlp/yt-dlp/wiki/Installation
-3. Installa FFmpeg e assicurati che `ffmpeg` sia disponibile nel PATH.
-4. Nella cartella del progetto:
+Questa versione include `INSTALLA-V4.vbs` (senza Prompt dei comandi) e, come alternativa, `INSTALLA-V4.bat`.
 
-```bash
-npm install
-npm run dev
-```
+1. Estrai lo ZIP della v4.
+2. Fai doppio clic su `INSTALLA-V4.vbs`.
+3. Seleziona la cartella del progetto attuale collegata a GitHub.
+4. Lo script conserva `.env.local`, copia la v4, crea il commit e fa push.
+5. Vercel effettua il deploy automaticamente.
 
-## Nota importante
+Richiede che Git/GitHub siano già configurati sul PC, come lo sono stati per il deploy precedente.
 
-Instagram, TikTok e YouTube cambiano frequentemente i loro sistemi. Un link pubblico può funzionare oggi e smettere di funzionare dopo un aggiornamento della piattaforma. Video privati, contenuti che richiedono login o protezioni anti-bot possono non essere recuperabili automaticamente.
+## Database
 
-Questa versione analizza titolo/didascalia + audio. Una versione successiva può anche estrarre fotogrammi dal video per leggere ingredienti e quantità mostrati solo visivamente sullo schermo.
+La v4 usa la tabella `recipes` già esistente con queste colonne:
 
+- `id` uuid
+- `title` text
+- `source_url` text
+- `image_url` text
+- `category` text
+- `tags` text[]
+- `ingredients` text[]
+- `steps` text[]
+- `notes` text
+- `prep_time_minutes` integer
+- `cook_time_minutes` integer
+- `total_time_minutes` integer
+- `servings` integer
+- `nutrition` jsonb
+- `created_at` timestamptz
 
-## Versione 3 — diagnosi e login browser
+E la tabella `categories` già creata con `id`, `name`, `created_at`.
 
-La v3 prova in quest'ordine:
-1. accesso pubblico;
-2. cookie della sessione Chrome;
-3. cookie della sessione Edge.
+RLS può rimanere attivo: l'app accede a Supabase solo dal backend usando la chiave server-side.
 
-Non devi inserire username/password nell'app. Se Instagram/TikTok richiede login, apri il contenuto in Chrome o Edge dove sei già autenticato e poi riprova.
+## Costi
 
-### Test rapido Windows
-
-Nel terminale:
-
-```bat
-yt-dlp --version
-ffmpeg -version
-```
-
-Poi prova direttamente il link:
-
-```bat
-yt-dlp -v "INCOLLA_QUI_IL_LINK"
-```
-
-Se richiede login:
-
-```bat
-yt-dlp --cookies-from-browser chrome -v "INCOLLA_QUI_IL_LINK"
-```
-
-oppure:
-
-```bat
-yt-dlp --cookies-from-browser edge -v "INCOLLA_QUI_IL_LINK"
-```
-
-La v3 mostra nel browser l'errore reale di yt-dlp invece del messaggio generico.
+Le funzioni normali del ricettario (visualizzazione, ricerca, cataloghi, PDF, lista spesa, backup, aggiornamenti) non chiamano OpenAI. OpenAI viene usata solo quando chiedi di estrarre una nuova ricetta.

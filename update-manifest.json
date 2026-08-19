@@ -1,0 +1,7 @@
+{
+  "name": "Ricettario AI",
+  "version": "4.0.0",
+  "channel": "stable",
+  "description": "Nuova interfaccia mobile-first, PDF con foto, categorie sincronizzate, immagini persistenti, lista spesa e aggiornamenti ZIP dall'app.",
+  "delete": []
+}

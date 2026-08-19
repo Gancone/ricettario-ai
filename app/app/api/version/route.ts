@@ -1,0 +1,10 @@
+import pkg from "@/package.json";
+
+export const dynamic = "force-dynamic";
+
+export async function GET() {
+  return Response.json(
+    { version: pkg.version },
+    { headers: { "cache-control": "no-store, max-age=0" } }
+  );
+}

@@ -1,14 +1,14 @@
 import { supabase } from "@/lib/supabase";
 import { createDatabaseSnapshot } from "@/lib/data-safety";
+import { DEFAULT_CATEGORY_NAMES } from "@/lib/categories";
+import { requireAppAuth } from "@/lib/app-auth";
 
-const DEFAULT_CATEGORIES = [
-  "Colazione",
-  "Merenda",
-  "Primi piatti",
-  "Secondi piatti",
-  "Contorni",
-  "Dessert"
-];
+async function ensureDefaults() {
+  const { error } = await supabase
+    .from("categories")
+    .upsert(DEFAULT_CATEGORY_NAMES.map((name) => ({ name })), { onConflict: "name" });
+  if (error) throw error;
+}
 
 async function readCategories() {
   const { data, error } = await supabase.from("categories").select("id,name").order("name");
@@ -16,14 +16,12 @@ async function readCategories() {
   return data || [];
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  const auth = requireAppAuth(request);
+  if (auth) return auth;
   try {
-    let categories = await readCategories();
-    if (!categories.length) {
-      await supabase.from("categories").upsert(DEFAULT_CATEGORIES.map((name) => ({ name })), { onConflict: "name" });
-      categories = await readCategories();
-      await createDatabaseSnapshot("default-categories").catch(() => {});
-    }
+    await ensureDefaults();
+    const categories = await readCategories();
     return Response.json(categories, { headers: { "cache-control": "no-store, max-age=0" } });
   } catch (error: any) {
     return Response.json({ error: error?.message || "Errore caricamento categorie" }, { status: 500 });
@@ -31,6 +29,8 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const auth = requireAppAuth(request);
+  if (auth) return auth;
   try {
     const { name } = await request.json();
     const clean = String(name || "").trim();

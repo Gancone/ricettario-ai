@@ -2,41 +2,93 @@ import OpenAI from "openai";
 import { mkdtemp, readFile, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import path from "path";
-import { downloadYtDlpMedia, downloadYtDlpThumbnailDataUrl, getYtDlpMetadata } from "@/lib/ytdlp";
+import { downloadYtDlpMedia, downloadYtDlpThumbnailBytes, getYtDlpMetadata } from "@/lib/ytdlp";
+import { persistRecipeImage, persistRecipeImageBytes } from "@/lib/image-storage";
+import { requireAppAuth } from "@/lib/app-auth";
+import { supabase } from "@/lib/supabase";
+import { fromDb } from "@/lib/recipe-map";
+import { DEFAULT_CATEGORY_NAMES, mergeCategoryNames } from "@/lib/categories";
+import { normalizeSourceUrl } from "@/lib/source-url";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
-function asNumber(value: unknown) {
+function asPositive(value: unknown, fallback = 0) {
   const n = Number(value);
-  return Number.isFinite(n) && n >= 0 ? n : 0;
+  return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
-function normalizeRecipe(raw: any) {
+function asNonNegative(value: unknown, fallback = 0) {
+  const n = Number(value);
+  return Number.isFinite(n) && n >= 0 ? n : fallback;
+}
+
+function cleanStringList(value: unknown) {
+  return Array.isArray(value) ? value.map((x) => String(x || "").trim()).filter(Boolean) : [];
+}
+
+function pickCategory(value: unknown, allowed: string[]) {
+  const raw = String(value || "").trim();
+  const exact = allowed.find((x) => x.toLocaleLowerCase("it") === raw.toLocaleLowerCase("it"));
+  return exact || allowed[0] || "Primi piatti";
+}
+
+function normalizeRecipe(raw: any, categories: string[]) {
   const nutrition = raw?.nutrition || {};
+  const prep = asNonNegative(raw?.prepTimeMinutes, 10);
+  const cook = asNonNegative(raw?.cookTimeMinutes, 15);
+  const total = Math.max(asNonNegative(raw?.totalTimeMinutes, prep + cook), prep + cook);
+  const servings = Math.min(12, Math.max(1, Math.round(asPositive(raw?.servings, 2))));
+
+  const protein = asNonNegative(nutrition.protein);
+  const carbs = asNonNegative(nutrition.carbs);
+  const fat = asNonNegative(nutrition.fat);
+  let calories = asNonNegative(nutrition.calories);
+  if (!calories && (protein || carbs || fat)) calories = Math.round(protein * 4 + carbs * 4 + fat * 9);
+
   return {
     title: String(raw?.title || "Ricetta senza titolo").trim(),
-    ingredients: Array.isArray(raw?.ingredients) ? raw.ingredients.map(String) : [],
-    steps: Array.isArray(raw?.steps) ? raw.steps.map(String) : [],
-    notes: String(raw?.notes || ""),
-    prepTimeMinutes: asNumber(raw?.prepTimeMinutes),
-    cookTimeMinutes: asNumber(raw?.cookTimeMinutes),
-    totalTimeMinutes: asNumber(raw?.totalTimeMinutes),
-    servings: asNumber(raw?.servings),
+    suggestedCategory: pickCategory(raw?.suggestedCategory, categories),
+    ingredients: cleanStringList(raw?.ingredients),
+    steps: cleanStringList(raw?.steps),
+    sourceNotes: String(raw?.sourceNotes || raw?.notes || "").trim(),
+    prepTimeMinutes: prep,
+    cookTimeMinutes: cook,
+    totalTimeMinutes: total,
+    servings,
     nutrition: {
-      calories: asNumber(nutrition.calories),
-      protein: asNumber(nutrition.protein),
-      carbs: asNumber(nutrition.carbs),
-      fat: asNumber(nutrition.fat),
-      sugars: asNumber(nutrition.sugars),
-      fiber: asNumber(nutrition.fiber),
-      salt: asNumber(nutrition.salt),
+      calories,
+      protein,
+      carbs,
+      fat,
+      sugars: asNonNegative(nutrition.sugars),
+      fiber: asNonNegative(nutrition.fiber),
+      salt: asNonNegative(nutrition.salt),
       estimated: nutrition.estimated !== false
     }
   };
 }
 
+async function findDuplicate(sourceUrl: string) {
+  const normalized = normalizeSourceUrl(sourceUrl);
+  if (!normalized) return null;
+
+  const { data, error } = await supabase
+    .from("recipes")
+    .select("*")
+    .not("source_url", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(1000);
+  if (error) return null;
+
+  const row = (data || []).find((item) => normalizeSourceUrl(item.source_url || "") === normalized);
+  return row ? fromDb(row) : null;
+}
+
 export async function POST(request: Request) {
+  const auth = requireAppAuth(request);
+  if (auth) return auth;
+
   let workdir = "";
   try {
     if (!process.env.OPENAI_API_KEY) {
@@ -46,22 +98,42 @@ export async function POST(request: Request) {
     const form = await request.formData();
     const sourceUrl = String(form.get("sourceUrl") || "").trim();
     const sourceText = String(form.get("sourceText") || "").trim();
+    const recipeId = String(form.get("recipeId") || "").trim() || crypto.randomUUID();
     const uploaded = form.get("video") as File | null;
+    const requestedCategories = String(form.get("categoryNames") || "")
+      .split("|")
+      .map((x) => x.trim())
+      .filter(Boolean);
+    const categories = mergeCategoryNames(requestedCategories.length ? requestedCategories : [...DEFAULT_CATEGORY_NAMES]);
 
     if (!sourceUrl && !sourceText && (!uploaded || uploaded.size === 0)) {
       return Response.json({ error: "Incolla il link di un video oppure carica un file." }, { status: 400 });
     }
 
+    if (sourceUrl) {
+      const duplicate = await findDuplicate(sourceUrl);
+      if (duplicate) {
+        return Response.json({ duplicate: true, existingRecipe: duplicate, message: "Questa fonte è già presente nel ricettario." });
+      }
+    }
+
     workdir = await mkdtemp(path.join(tmpdir(), "ricettario-"));
     let mediaPath = "";
     let metadataText = "";
-    let thumbnailUrl = "";
+    let imageUrl = "";
     let warning = "";
 
     if (sourceUrl) {
       const metadata = await getYtDlpMetadata(sourceUrl);
       metadataText = metadata.text;
-      thumbnailUrl = await downloadYtDlpThumbnailDataUrl(sourceUrl, workdir) || metadata.thumbnail;
+
+      const thumb = await downloadYtDlpThumbnailBytes(sourceUrl, workdir);
+      if (thumb) {
+        imageUrl = await persistRecipeImageBytes(recipeId, thumb.bytes, thumb.contentType).catch(() => "");
+      }
+      if (!imageUrl && metadata.thumbnail) {
+        imageUrl = await persistRecipeImage(recipeId, metadata.thumbnail).catch(() => metadata.thumbnail || "");
+      }
 
       try {
         mediaPath = await downloadYtDlpMedia(sourceUrl, workdir);
@@ -98,7 +170,7 @@ export async function POST(request: Request) {
     const response = await client.responses.create({
       model: "gpt-4o-mini",
       store: false,
-      input: `Trasforma il contenuto seguente in una ricetta italiana chiara e fedele.\n\nREGOLE:\n- Usa soltanto le informazioni ricavabili da titolo, didascalia e trascrizione.\n- Non inventare quantità di ingredienti mancanti: se una quantità non è disponibile, scrivi solo l'ingrediente.\n- Elimina saluti, sponsor e parti non pertinenti.\n- Puoi stimare tempi e valori nutrizionali quando non sono dichiarati; in quel caso nutrition.estimated deve essere true.\n- I valori nutrizionali sono PER PORZIONE. calories in kcal; protein, carbs, fat, sugars, fiber e salt in grammi.\n- totalTimeMinutes deve essere coerente con preparazione e cottura.\n- Se il numero di porzioni non è ricavabile, usa 0.\n- Restituisci SOLO JSON valido, senza markdown.\n\nFORMATO:\n{\n  \"title\": \"string\",\n  \"ingredients\": [\"string\"],\n  \"steps\": [\"string\"],\n  \"notes\": \"string\",\n  \"prepTimeMinutes\": 0,\n  \"cookTimeMinutes\": 0,\n  \"totalTimeMinutes\": 0,\n  \"servings\": 0,\n  \"nutrition\": {\n    \"calories\": 0,\n    \"protein\": 0,\n    \"carbs\": 0,\n    \"fat\": 0,\n    \"sugars\": 0,\n    \"fiber\": 0,\n    \"salt\": 0,\n    \"estimated\": true\n  }\n}\n\nURL FONTE:\n${sourceUrl || "nessuno"}\n\nCONTENUTO:\n${context}`
+      input: `Trasforma il contenuto seguente in una ricetta italiana chiara e fedele. Devi produrre una scheda completa anche quando il video non dichiara tutti i dati.\n\nREGOLE DI FEDELTÀ:\n- Ingredienti e procedimento devono derivare dal contenuto. Non inventare quantità mancanti: se la quantità non è disponibile, scrivi solo il nome dell'ingrediente.\n- Elimina saluti, sponsor, pubblicità e parti non pertinenti.\n- sourceNotes contiene SOLO informazioni utili provenienti dalla fonte o incertezze dell'estrazione. Non scrivere frasi decorative.\n\nSTIME OBBLIGATORIE:\n- Se tempi, porzioni o valori nutrizionali non sono dichiarati, STIMALI in modo culinariamente plausibile usando ingredienti, quantità e tipo di piatto. Non lasciare questi campi a zero soltanto perché il video non li dice.\n- servings deve essere un intero plausibile da 1 a 12; se non è chiaro, usa la stima più probabile (spesso 2 o 4).\n- I valori nutrizionali sono PER PORZIONE: calories in kcal; protein, carbs, fat, sugars, fiber e salt in grammi.\n- nutrition.estimated deve essere true quando almeno un valore è stimato.\n- totalTimeMinutes deve essere almeno prepTimeMinutes + cookTimeMinutes.\n\nCATALOGO:\n- suggestedCategory deve essere ESATTAMENTE uno di questi valori: ${categories.join(", ")}.\n- Scegli il catalogo più coerente con il piatto.\n\nRestituisci SOLO JSON valido, senza markdown, con questa forma:\n{\n  "title": "string",\n  "suggestedCategory": "string",\n  "ingredients": ["string"],\n  "steps": ["string"],\n  "sourceNotes": "string",\n  "prepTimeMinutes": 10,\n  "cookTimeMinutes": 15,\n  "totalTimeMinutes": 25,\n  "servings": 2,\n  "nutrition": {\n    "calories": 450,\n    "protein": 20,\n    "carbs": 55,\n    "fat": 16,\n    "sugars": 6,\n    "fiber": 5,\n    "salt": 1.2,\n    "estimated": true\n  }\n}\n\nURL FONTE:\n${sourceUrl || "nessuno"}\n\nCONTENUTO:\n${context}`
     });
 
     let raw: any;
@@ -109,8 +181,9 @@ export async function POST(request: Request) {
     }
 
     return Response.json({
-      ...normalizeRecipe(raw),
-      imageUrl: thumbnailUrl,
+      ...normalizeRecipe(raw, categories),
+      imageUrl,
+      recipeId,
       warning
     });
   } catch (error: any) {

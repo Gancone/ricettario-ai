@@ -3,11 +3,13 @@ import { toDb, fromDb } from "@/lib/recipe-map";
 import { persistRecipeImage } from "@/lib/image-storage";
 import { createDatabaseSnapshot } from "@/lib/data-safety";
 import type { Recipe } from "@/types/recipe";
+import { requireAppAuth } from "@/lib/app-auth";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
 export async function POST(request: Request) {
+  const auth = requireAppAuth(request); if (auth) return auth;
   try {
     const body = await request.json().catch(() => ({}));
     const recipes = Array.isArray(body?.recipes) ? (body.recipes as Recipe[]) : [];
@@ -28,7 +30,7 @@ export async function POST(request: Request) {
     if (rows.length) {
       const { error } = await supabase.from("recipes").upsert(rows, { onConflict: "id" });
       if (error) throw error;
-      await createDatabaseSnapshot("local-recovery").catch(() => {});
+      await createDatabaseSnapshot("local-recovery");
     }
 
     const { data, error } = await supabase.from("recipes").select("*").order("created_at", { ascending: false });

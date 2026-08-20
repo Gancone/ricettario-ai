@@ -3,10 +3,10 @@ $ErrorActionPreference = "Stop"
 $source = Split-Path -Parent $PSScriptRoot
 
 function Info([string]$message) {
-  [System.Windows.Forms.MessageBox]::Show($message, "Ricettario AI v5", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information) | Out-Null
+  [System.Windows.Forms.MessageBox]::Show($message, "Ricettario AI v6", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information) | Out-Null
 }
 function Fail([string]$message) {
-  [System.Windows.Forms.MessageBox]::Show($message, "Ricettario AI v5 - errore", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null
+  [System.Windows.Forms.MessageBox]::Show($message, "Ricettario AI v6 - errore", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null
 }
 
 $target = "C:\Users\Admin\Desktop\ricettario-ai-v3"
@@ -69,7 +69,7 @@ try {
     & git add -A
     if ($LASTEXITCODE -ne 0) { throw "git add non riuscito" }
 
-    & git commit -m "Ricettario AI v5 - Fortress"
+    & git commit -m "Ricettario AI v6 - Fortress"
     $commitExit = $LASTEXITCODE
     if ($commitExit -ne 0) {
       $status = & git status --porcelain
@@ -81,7 +81,7 @@ try {
   }
   finally { Pop-Location }
 
-  Info "Versione 5 inviata a GitHub. Vercel avvierà il deploy automaticamente. Le ricette su Supabase non sono state toccate. Quando Vercel mostra Ready, apri il sito e attendi qualche secondo: la v5 controllerà e proteggerà i dati automaticamente."
+  Info "Versione 6 inviata a GitHub. Vercel avvierà il deploy automaticamente. Le ricette su Supabase non sono state toccate. Quando Vercel mostra Ready, apri il sito e attendi qualche secondo: la v6 controllerà e proteggerà i dati automaticamente."
 }
 catch {
   if ($envBackup -ne $null) { Set-Content -Path $envPath -Value $envBackup -NoNewline }

@@ -1,8 +1,17 @@
 {
   "name": "Ricettario AI",
-  "version": "5.0.0",
+  "version": "6.0.0",
   "channel": "stable",
-  "description": "Versione Fortress: protezione dati multilivello, backup automatici, recupero ricette, immagini persistenti e interfaccia mobile completamente ridisegnata.",
-  "delete": [],
-  "notes": "Gli aggiornamenti non modificano o cancellano il database. Prima di ogni aggiornamento viene creato un backup su Supabase Storage; ogni salvataggio aggiorna anche una copia locale. La cancellazione permanente delle ricette è disattivata."
+  "description": "Versione Precision: cataloghi sempre disponibili, stime nutrizionali/porzioni complete, duplicati senza costo AI, login personale, modifica completa, preferiti, archivio, lista spesa sincronizzata, updater sicuro e UX mobile rifinita.",
+  "managedRoots": [
+    "app",
+    "components",
+    "lib",
+    "public",
+    "types"
+  ],
+  "delete": [
+    "lib/update-auth.ts"
+  ],
+  "notes": "Nessun aggiornamento cancella ricette. Il backup pre-update è obbligatorio; se fallisce l’update viene bloccato. I metadati nuovi sono salvati nel JSON nutrition esistente, quindi non servono modifiche SQL manuali."
 }

@@ -1,7 +1,8 @@
 import type { Recipe } from "@/types/recipe";
 
-const PRIMARY_KEY = "ricettario-safe-v5";
+const PRIMARY_KEY = "ricettario-safe-v6";
 const LEGACY_KEYS = [
+  "ricettario-safe-v5",
   "ricettario-ai",
   "ricettario-ai-v4",
   "ricettario-recipes",

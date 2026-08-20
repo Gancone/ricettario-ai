@@ -18,16 +18,21 @@ export type Recipe = {
   tags: string[];
   ingredients: string[];
   steps: string[];
+  sourceNotes?: string;
   notes?: string;
   prepTimeMinutes?: number;
   cookTimeMinutes?: number;
   totalTimeMinutes?: number;
   servings?: number;
   nutrition?: Nutrition;
+  favorite?: boolean;
+  archived?: boolean;
+  rating?: number;
   createdAt: string;
 };
 
 export type RecipeDraft = {
+  id: string;
   title: string;
   sourceUrl: string;
   imageUrl: string;
@@ -35,6 +40,7 @@ export type RecipeDraft = {
   tags: string;
   ingredients: string;
   steps: string;
+  sourceNotes: string;
   notes: string;
   prepTimeMinutes: string;
   cookTimeMinutes: string;
@@ -55,25 +61,29 @@ export type Category = {
   name: string;
 };
 
-export const EMPTY_DRAFT: RecipeDraft = {
-  title: "",
-  sourceUrl: "",
-  imageUrl: "",
-  category: "",
-  tags: "",
-  ingredients: "",
-  steps: "",
-  notes: "",
-  prepTimeMinutes: "",
-  cookTimeMinutes: "",
-  totalTimeMinutes: "",
-  servings: "",
-  calories: "",
-  protein: "",
-  carbs: "",
-  fat: "",
-  sugars: "",
-  fiber: "",
-  salt: "",
-  nutritionEstimated: true
-};
+export function newEmptyDraft(): RecipeDraft {
+  return {
+    id: typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `draft-${Date.now()}`,
+    title: "",
+    sourceUrl: "",
+    imageUrl: "",
+    category: "",
+    tags: "",
+    ingredients: "",
+    steps: "",
+    sourceNotes: "",
+    notes: "",
+    prepTimeMinutes: "",
+    cookTimeMinutes: "",
+    totalTimeMinutes: "",
+    servings: "",
+    calories: "",
+    protein: "",
+    carbs: "",
+    fat: "",
+    sugars: "",
+    fiber: "",
+    salt: "",
+    nutritionEstimated: true
+  };
+}

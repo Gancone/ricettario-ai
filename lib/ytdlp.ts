@@ -120,3 +120,31 @@ export async function downloadYtDlpThumbnailDataUrl(url: string, workdir: string
     return "";
   }
 }
+
+
+export async function downloadYtDlpThumbnailBytes(url: string, workdir: string) {
+  await ensureYtDlp();
+  const output = path.join(workdir, "thumb-direct.%(ext)s");
+  try {
+    await run(YTDLP_PATH, [
+      "--no-playlist",
+      "--no-warnings",
+      "--skip-download",
+      "--write-thumbnail",
+      "--socket-timeout", "20",
+      "--retries", "1",
+      "-o", output,
+      url
+    ]);
+    const files = await readdir(workdir);
+    const found = files.find((f) => f.startsWith("thumb-direct."));
+    if (!found) return null;
+    const mime = mimeForThumbnail(found);
+    if (!mime) return null;
+    const bytes = await readFile(path.join(workdir, found));
+    if (!bytes.length || bytes.length > 5 * 1024 * 1024) return null;
+    return { bytes, contentType: mime };
+  } catch {
+    return null;
+  }
+}

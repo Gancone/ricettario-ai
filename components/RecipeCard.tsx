@@ -5,7 +5,17 @@ import type { Recipe } from "@/types/recipe";
 import { displayImageUrl } from "@/lib/image-client";
 import { Icon } from "@/components/Icon";
 
-export function RecipeCard({ recipe, onOpen, onImageUpdated }: { recipe: Recipe; onOpen: () => void; onImageUpdated?: (imageUrl: string) => void }) {
+export function RecipeCard({
+  recipe,
+  onOpen,
+  onImageUpdated,
+  onToggleFavorite
+}: {
+  recipe: Recipe;
+  onOpen: () => void;
+  onImageUpdated?: (imageUrl: string) => void;
+  onToggleFavorite: () => void;
+}) {
   const [imageUrl, setImageUrl] = useState(recipe.imageUrl || "");
   const [repairing, setRepairing] = useState(false);
   const [attempted, setAttempted] = useState(false);
@@ -31,34 +41,34 @@ export function RecipeCard({ recipe, onOpen, onImageUpdated }: { recipe: Recipe;
   }
 
   return (
-    <article className="recipe-card-shell">
+    <article className={recipe.archived ? "recipe-card-shell archived" : "recipe-card-shell"}>
       <button className="recipe-card" onClick={onOpen} type="button" aria-label={`Apri ${recipe.title}`}>
         <div className="recipe-card-image-wrap">
           {imageUrl ? (
-            <img
-              className="recipe-card-image"
-              src={displayImageUrl(imageUrl)}
-              alt={recipe.title}
-              loading="lazy"
-              onError={repairImage}
-            />
+            <img className="recipe-card-image" src={displayImageUrl(imageUrl)} alt={recipe.title} loading="lazy" onError={repairImage} />
           ) : (
             <div className="recipe-card-placeholder">
               <div className="placeholder-monogram">{recipe.title.trim().slice(0, 1).toUpperCase() || "R"}</div>
-              {repairing ? <small>Recupero copertina…</small> : null}
+              <small>{repairing ? "Recupero foto…" : "Foto non disponibile"}</small>
             </div>
           )}
           <div className="recipe-card-gradient" />
-          <span className="recipe-card-category">{recipe.category}</span>
+          <span className="recipe-card-category">{recipe.archived ? "Archiviata" : recipe.category}</span>
           <div className="recipe-card-copy">
             <h3>{recipe.title}</h3>
             <div className="recipe-card-meta">
               {recipe.totalTimeMinutes ? <span><Icon name="clock" size={13} />{recipe.totalTimeMinutes} min</span> : null}
-              {recipe.nutrition?.calories ? <span><Icon name="flame" size={13} />{recipe.nutrition.calories} kcal</span> : null}
+              {recipe.nutrition?.calories !== undefined ? <span><Icon name="flame" size={13} />{recipe.nutrition.calories} kcal</span> : null}
             </div>
           </div>
         </div>
       </button>
+      <button
+        className={recipe.favorite ? "favorite-card-button active" : "favorite-card-button"}
+        type="button"
+        aria-label={recipe.favorite ? "Rimuovi dai preferiti" : "Aggiungi ai preferiti"}
+        onClick={(e) => { e.stopPropagation(); onToggleFavorite(); }}
+      ><Icon name="heart" size={17} /></button>
       {!imageUrl && recipe.sourceUrl && !repairing ? (
         <button className="repair-image-button" type="button" onClick={repairImage}><Icon name="image" size={14} /> Recupera foto</button>
       ) : null}

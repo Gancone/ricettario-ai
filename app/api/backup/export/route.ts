@@ -1,5 +1,7 @@
 import { exportCurrentBackup } from "@/lib/data-safety";
-export async function GET() {
+import { requireAppAuth } from "@/lib/app-auth";
+export async function GET(request: Request) {
+  const auth = requireAppAuth(request); if (auth) return auth;
   try {
     const payload = await exportCurrentBackup();
     const date = new Date().toISOString().slice(0, 10);

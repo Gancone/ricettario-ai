@@ -3,7 +3,7 @@ import { supabase } from "@/lib/supabase";
 const BUCKET = "recipe-images";
 let bucketEnsured = false;
 
-async function ensureBucket() {
+export async function ensureImageBucket() {
   if (bucketEnsured) return;
   const { data } = await supabase.storage.getBucket(BUCKET);
   if (!data) {
@@ -33,6 +33,22 @@ function parseDataUrl(value: string) {
   }
 }
 
+export async function persistRecipeImageBytes(recipeId: string, bytes: Buffer, contentType = "image/jpeg") {
+  if (!bytes.length || bytes.length > 5 * 1024 * 1024) return "";
+  const allowed = ["image/jpeg", "image/png", "image/webp"];
+  if (!allowed.includes(contentType)) return "";
+
+  await ensureImageBucket();
+  const objectPath = `${recipeId}/cover.${extensionFor(contentType)}`;
+  const { error } = await supabase.storage.from(BUCKET).upload(objectPath, bytes, {
+    contentType,
+    upsert: true,
+    cacheControl: "31536000"
+  });
+  if (error) throw error;
+  return supabase.storage.from(BUCKET).getPublicUrl(objectPath).data.publicUrl;
+}
+
 export async function persistRecipeImage(recipeId: string, imageUrl?: string) {
   if (!imageUrl) return "";
   if (imageUrl.includes("/storage/v1/object/public/recipe-images/")) return imageUrl;
@@ -49,7 +65,7 @@ export async function persistRecipeImage(recipeId: string, imageUrl?: string) {
       const response = await fetch(imageUrl, {
         headers: {
           "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130 Safari/537.36",
-          accept: "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+          accept: "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
           referer: "https://www.instagram.com/"
         },
         signal: AbortSignal.timeout(15000)
@@ -62,18 +78,7 @@ export async function persistRecipeImage(recipeId: string, imageUrl?: string) {
       return imageUrl;
     }
 
-    if (!bytes.length || bytes.length > 5 * 1024 * 1024) return imageUrl;
-
-    await ensureBucket();
-    const objectPath = `${recipeId}/cover.${extensionFor(contentType)}`;
-    const { error } = await supabase.storage.from(BUCKET).upload(objectPath, bytes, {
-      contentType,
-      upsert: true,
-      cacheControl: "31536000"
-    });
-    if (error) return imageUrl;
-
-    return supabase.storage.from(BUCKET).getPublicUrl(objectPath).data.publicUrl;
+    return (await persistRecipeImageBytes(recipeId, bytes, contentType)) || imageUrl;
   } catch {
     return imageUrl;
   }

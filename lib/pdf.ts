@@ -139,9 +139,18 @@ export async function exportRecipePdf(recipe: Recipe) {
     }
   }
 
+  if (recipe.sourceNotes) {
+    y += 4;
+    section("Note dalla fonte");
+    const lines = doc.splitTextToSize(recipe.sourceNotes, contentWidth);
+    ensure(lines.length * 5.5);
+    doc.text(lines, margin, y);
+    y += lines.length * 5.5;
+  }
+
   if (recipe.notes) {
     y += 4;
-    section("Note");
+    section("Note personali");
     const lines = doc.splitTextToSize(recipe.notes, contentWidth);
     ensure(lines.length * 5.5);
     doc.text(lines, margin, y);

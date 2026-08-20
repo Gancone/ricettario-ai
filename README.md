@@ -1,31 +1,37 @@
-# Ricettario AI v5 — Fortress
+# Ricettario AI v6 — Precision
 
-Versione progettata con priorità assoluta a stabilità, protezione dei dati e qualità mobile.
+Aggiornamento progettato per uso personale, mobile-first e senza nuovi servizi a pagamento.
 
-## Protezione dati
+## Cosa cambia
 
-- Le ricette restano su Supabase e non fanno parte degli ZIP di aggiornamento.
-- La cancellazione permanente delle ricette dall'interfaccia/API è disattivata.
-- Ogni salvataggio o modifica crea un backup JSON automatico nel bucket privato `ricettario-backups` di Supabase Storage.
-- Prima di ogni aggiornamento ZIP viene creato un backup pre-aggiornamento.
-- Se la tabella recipes risultasse inaspettatamente vuota, l'app prova a ripristinare automaticamente l'ultimo backup.
-- Il browser mantiene anche una copia locale di sicurezza e può reinviarla a Supabase se trova ricette mancanti.
-- Il service worker non salva mai in cache le API delle ricette, evitando viste vuote/stale dopo un aggiornamento.
+- Ricette sempre su Supabase, con copia locale e snapshot automatici.
+- Backup pre-aggiornamento obbligatorio: se fallisce, l'aggiornamento non parte.
+- Accesso personale con cookie annuale. `APP_PASSWORD` è opzionale: se non configurata viene usata `UPDATE_PASSWORD` già presente su Vercel.
+- Nessuna seconda password per installare gli ZIP dopo l'accesso al Ricettario.
+- Controllo duplicati prima di OpenAI: lo stesso link non viene estratto due volte.
+- Cataloghi base sempre disponibili, catalogo suggerito automaticamente e creazione catalogo direttamente nel form.
+- Porzioni e valori nutrizionali stimati anche quando il video non li dichiara.
+- Note della fonte separate dalle note personali.
+- Modifica completa delle ricette già salvate.
+- Preferiti e Archivio senza cancellazione permanente.
+- Copertine salvate direttamente su Supabase Storage durante l'estrazione; recupero massivo solo manuale.
+- PDF con fotografia e note separate.
+- Lista della spesa sincronizzata via Supabase Storage.
+- Ricerca anche in procedimento e note, più filtri rapidi per tempo/calorie/proteine.
+- Porzioni ridimensionabili, timer dai passaggi e Wake Lock per tenere lo schermo acceso.
+- Stato sistema nelle Impostazioni.
+- Aggiornamenti futuri puliscono automaticamente i file obsoleti nelle cartelle gestite.
 
-## Immagini
+## Installazione consigliata dalla v5
 
-Le nuove estrazioni provano a recuperare la copertina del video e il salvataggio la rende persistente nel bucket `recipe-images`. Le ricette precedenti con fonte social e copertina mancante vengono riparate gradualmente in background.
+Apri il sito v5 → **Altro / Impostazioni → Aggiornamenti ZIP** → seleziona `ricettario-ai-v6.zip` → installa.
 
-## Installazione della v5 su Windows
+La prima apertura della v6 chiede la password personale. Se non hai configurato `APP_PASSWORD`, usa la stessa `UPDATE_PASSWORD` che avevi già impostato su Vercel. Il dispositivo resta autorizzato per un anno.
 
-1. Estrai completamente lo ZIP.
-2. Fai doppio clic su `INSTALLA-V5.vbs`.
-3. Se trova `C:\Users\Admin\Desktop\ricettario-ai-v3` la usa automaticamente; altrimenti chiede di scegliere la cartella del progetto GitHub.
-4. Lo script sostituisce solo il codice, conserva `.env.local`, fa commit e push.
-5. Aspetta che Vercel mostri `Ready`.
+## Fallback senza Prompt
 
-Lo script non esegue query distruttive e non modifica Supabase.
+Se l'updater web non fosse disponibile, estrai lo ZIP e fai doppio clic su `INSTALLA-V6.vbs`. Non serve aprire Prompt o PowerShell manualmente.
 
-## Aggiornamenti successivi
+## Dati
 
-Da v5 in poi usa Impostazioni → Aggiornamenti ZIP. Dopo l'autorizzazione iniziale del browser, la password non viene più chiesta per un anno su quel dispositivo. Prima di ogni aggiornamento viene creato automaticamente un backup dei dati.
+La v6 non esegue `DROP`, `TRUNCATE` o cancellazioni della tabella `recipes`. Le nuove funzioni (preferiti, archivio, note dalla fonte) usano il JSON `nutrition` già esistente e non richiedono modifiche SQL manuali.

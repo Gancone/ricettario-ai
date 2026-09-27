@@ -7,8 +7,10 @@ import { displayImageUrl } from "@/lib/image-client";
 import { Icon } from "@/components/Icon";
 
 function n(value: string) {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
+  if (!value.trim()) return undefined;
+  const parsed = Number(value.replace(",", "."));
+  if (!Number.isFinite(parsed) || parsed < 0) throw new Error("Inserisci valori numerici validi, maggiori o uguali a zero.");
+  return parsed;
 }
 
 function numberString(value: unknown) {
@@ -185,22 +187,21 @@ export function NewRecipe({
 
   async function save() {
     if (!draft.title.trim()) return setStatus("Manca il titolo della ricetta.");
-    if (!draft.category.trim()) return setStatus("Scegli un catalogo.");
     const ingredientList = draft.ingredients.split("\n").map((x) => x.trim()).filter(Boolean);
     const stepList = draft.steps.split("\n").map((x) => x.trim()).filter(Boolean);
     if (!ingredientList.length) return setStatus("Aggiungi almeno un ingrediente.");
     if (!stepList.length) return setStatus("Aggiungi almeno un passaggio del procedimento.");
 
-    const recipe = buildRecipe(draft);
     setBusy(true);
     setStatus("Salvataggio sicuro su Supabase + backup…");
     try {
+      const recipe = buildRecipe(draft);
       const response = await fetch("/api/recipes", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(recipe)
       });
-      const saved = await response.json();
+      const saved = await response.json().catch(() => { throw new Error("Il server non ha completato il salvataggio. Riprova: la ricetta è ancora nel modulo."); });
       if (!response.ok) {
         if (response.status === 409 && saved.duplicateId) throw new Error(saved.error || "Ricetta già presente");
         throw new Error(saved.error || "Salvataggio non riuscito");
@@ -237,7 +238,7 @@ export function NewRecipe({
             </div>
           </details>
           <button className="button primary big full" type="button" onClick={extract} disabled={busy}><Icon name="sparkles" size={18} />{busy ? "Elaborazione…" : "Estrai ricetta"}</button>
-          {status ? <div className="status-line">{status}</div> : null}
+          {status ? <div className="status-line" role="status" aria-live="polite">{status}</div> : null}
           {warning ? <div className="warning-box">{warning}</div> : null}
           {duplicate ? <div className="duplicate-box"><div><strong>Già salvata</strong><span>{duplicate.title}</span></div><button className="button soft" type="button" onClick={() => onDuplicate(duplicate)}>Apri ricetta</button></div> : null}
         </div>
@@ -305,6 +306,7 @@ export function NewRecipe({
 
               <div className="save-safety"><Icon name="shield" size={16} /><span>Il salvataggio crea anche un backup. Gli aggiornamenti non cancellano le ricette.</span></div>
               <button className="button primary big full sticky-save" type="button" onClick={save} disabled={busy}><Icon name="database" size={18} />{busy ? "Salvo…" : "Salva nel ricettario"}</button>
+              {status ? <div className="status-line" role="status" aria-live="polite">{status}</div> : null}
             </>
           )}
         </div>

@@ -1,5 +1,18 @@
 # Ricettario AI v6 — Precision
 
+## Correzione salvataggio 6.0.1
+
+Gli ID delle bozze sono UUID validi anche nei browser senza `crypto.randomUUID`.
+Tempi e porzioni decimali vengono arrotondati per eccesso per le colonne intere di Supabase.
+Gli errori di salvataggio compaiono anche accanto al pulsante Salva; i campi numerici vuoti restano non specificati.
+
+Verifica di regressione (Node.js 24): `node --test tests/recipe-save.test.mjs`.
+
+Per l'updater ZIP di questo repository, configurare su Vercel `GITHUB_OWNER=Gancone`,
+`GITHUB_REPO=ricettario-ai`, `GITHUB_BRANCH=main` e `GITHUB_UPDATE_TOKEN` con accesso
+al repository e permesso Contents in lettura e scrittura. Non inserire il token nel codice.
+L'aggiornamento conserva il controllo del backup precedente alla pubblicazione.
+
 Aggiornamento progettato per uso personale, mobile-first e senza nuovi servizi a pagamento.
 
 ## Cosa cambia

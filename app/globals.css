@@ -1,10 +1,11 @@
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 :root {
   --bg: #f3efe6;
   --paper: #fffdf8;
   --paper-2: #faf7f0;
   --ink: #1f2b23;
-  --muted: #72776f;
+  --muted: #62685f;
   --accent: #315d45;
   --accent-dark: #244936;
   --accent-soft: #e7efe8;
@@ -13,6 +14,7 @@
   --shadow-sm: 0 8px 24px rgba(31,43,35,.07);
   --shadow-md: 0 18px 52px rgba(31,43,35,.12);
 }
+
 html { background: var(--bg); }
 body {
   margin: 0;
@@ -438,4 +440,46 @@ textarea.tall { min-height: 150px; }
   .shopping-manual { grid-template-columns:1fr; }
   .login-card { padding:22px 18px; border-radius:22px; }
   .login-card h1 { font-size:34px; }
+}
+
+/* 6.1: lettura, navigazione e feedback coerenti su telefono e desktop. */
+fieldset.new-layout, fieldset.detail-editor { border: 0; padding: 0; margin: 0; min-width: 0; }
+:focus-visible { outline: 3px solid #548565; outline-offset: 4px; }
+button:disabled { cursor: wait; }
+.collection-summary { display: flex; gap: 0; margin: 0 0 24px; padding: 20px 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+.collection-summary > span { display: flex; align-items: baseline; gap: 8px; padding: 0 28px; color: var(--muted); font-size: 12px; border-right: 1px solid var(--border); }
+.collection-summary > span:first-child { padding-left: 0; }
+.collection-summary > span:last-child { border: 0; }
+.collection-summary strong { font-family: Georgia, serif; font-size: 30px; font-weight: 500; color: var(--accent); }
+.app-notice { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 18px; padding: 14px 18px; border: 1px solid #c8d9c7; border-radius: 14px; background: #edf5ec; color: var(--accent-dark); font-size: 13px; }
+.app-notice button, .results-bar button { border: 0; background: transparent; color: var(--accent-dark); font-weight: 700; min-height: 36px; }
+.draft-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 18px; padding: 12px 16px; background: var(--accent-soft); border: 1px solid #d2dfd1; border-radius: 16px; }
+.draft-toolbar > span { font-size: 12px; line-height: 1.5; color: var(--accent-dark); }
+.draft-toolbar .button { flex-shrink: 0; }
+.manual-divider { display: flex; align-items: center; gap: 12px; margin: 14px 0; color: var(--muted); font-size: 12px; }
+.manual-divider::before, .manual-divider::after { content: ""; height: 1px; background: var(--border); flex: 1; }
+.results-bar { display: flex; align-items: center; justify-content: space-between; margin: 0 0 14px; color: var(--muted); font-size: 13px; }
+.detail-status { position: sticky; top: 0; z-index: 5; background: #edf5ec; padding: 14px; border-radius: 12px; border: 1px solid #d2dfd1; }
+.warning-banner { flex-wrap: wrap; }
+.warning-banner > span { flex: 1; min-width: 180px; }
+.recipe-modal { scroll-behavior: smooth; }
+.recipe-modal:focus { outline: none; }
+.shopping-sync-line { flex-wrap: wrap; line-height: 1.5; }
+.shopping-row, .cook-row, .step-row { text-align: left; }
+.recipe-card-copy h3 { overflow-wrap: anywhere; }
+.field input:focus, .field textarea:focus, .field select:focus, .shopping-manual input:focus, .search-wrap:focus-within { border-color: #7c9b80; box-shadow: 0 0 0 3px rgba(49,93,69,.10); }
+@media (max-width: 720px) {
+  .collection-summary { padding: 14px 0; margin-bottom: 20px; }
+  .collection-summary > span { flex: 1; display: grid; gap: 3px; padding: 0 12px; font-size: 11px; }
+  .collection-summary strong { font-size: 26px; }
+  .draft-toolbar { padding: 12px; align-items: flex-start; }
+  .draft-toolbar > span { font-size: 11px; }
+  .draft-toolbar .button { padding: 8px; font-size: 11px; }
+  .field input, .field textarea, .field select, .shopping-manual input, .search-wrap input { font-size: 16px; }
+  .category-chip, .quick-filters button { min-height: 40px; }
+  .cook-row, .step-row { line-height: 1.65; }
+  .app-notice { font-size: 12px; padding: 12px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }

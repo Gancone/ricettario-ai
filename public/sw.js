@@ -1,4 +1,4 @@
-const CACHE = "ricettario-shell-v6";
+const CACHE = "ricettario-shell-v6-1";
 const SHELL = ["/", "/manifest.webmanifest", "/icons/icon-192.png", "/icons/icon-512.png"];
 
 self.addEventListener("install", (event) => {
@@ -10,7 +10,7 @@ self.addEventListener("activate", (event) => {
   event.waitUntil(
     Promise.all([
       self.clients.claim(),
-      caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+      caches.keys().then((keys) => Promise.all(keys.filter((k) => k.startsWith("ricettario-shell-") && k !== CACHE).map((k) => caches.delete(k))))
     ])
   );
 });
@@ -27,10 +27,12 @@ self.addEventListener("fetch", (event) => {
   event.respondWith(
     fetch(event.request)
       .then((response) => {
-        const copy = response.clone();
-        caches.open(CACHE).then((cache) => cache.put(event.request, copy)).catch(() => {});
+        if (response.ok) {
+          const copy = response.clone();
+          event.waitUntil(caches.open(CACHE).then((cache) => cache.put(event.request, copy)).catch(() => {}));
+        }
         return response;
       })
-      .catch(() => caches.match(event.request))
+      .catch(async () => (await caches.match(event.request)) || new Response("Connessione non disponibile", { status: 503, headers: { "content-type": "text/plain; charset=utf-8" } }))
   );
 });

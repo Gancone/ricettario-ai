@@ -28,7 +28,7 @@ export async function POST(request: Request) {
     }
 
     if (rows.length) {
-      const { error } = await supabase.from("recipes").upsert(rows, { onConflict: "id" });
+      const { error } = await supabase.from("recipes").upsert(rows, { onConflict: "id", ignoreDuplicates: true });
       if (error) throw error;
       await createDatabaseSnapshot("local-recovery");
     }

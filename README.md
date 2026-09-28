@@ -1,4 +1,28 @@
-# Ricettario AI v6 — Precision
+# Ricettario AI 6.1 — La tua cucina, ogni giorno
+
+## Novità della 6.1
+
+- Bozza automatica sul dispositivo, recuperata dopo ricaricamento e conservata durante i cambi di scheda. I file video devono essere selezionati nuovamente dopo un ricaricamento.
+- Inserimento manuale delle ricette senza chiamare OpenAI, con controllo dei campi e protezione dai doppi salvataggi.
+- Ricerca per più parole in qualsiasi ordine, senza distinzione di accenti, riepilogo della raccolta e azzeramento dei filtri.
+- Lista della spesa con errori di sincronizzazione visibili, coda locale dei cambiamenti, riprova e ripartenza alla riconnessione. Le richieste dello stesso dispositivo sono serializzate; modifiche simultanee da dispositivi diversi continuano a seguire l’ultimo salvataggio.
+- Quantità diverse degli ingredienti mantenute in lista, rimozione degli acquistati e annullamento dello svuotamento.
+- Dosi con frazioni (`1/2`, `1 1/2`, `½`), timer basato sull’orario reale e ricalcolo al ritorno alla pagina. Per ricevere l’avviso del timer occorre lasciare aperta la scheda ricetta; non sono notifiche di sistema in background.
+- Modifiche conservate in caso di errore, avviso prima di uscire senza salvare, focus nella scheda ricetta, tasto Esc e pulsanti con etichette accessibili.
+- Cataloghi, ricette e spesa caricati indipendentemente; recupero locale additivo che non sovrascrive le ricette già presenti sul server.
+- Validazione server dei dati, timeout delle richieste, stato del backup visibile e foto mancanti con recupero manuale.
+- Interfaccia più leggibile da telefono, campi senza zoom automatico, supporto alle preferenze di movimento ridotto e cache che non conserva risposte di errore.
+
+## Sviluppo e verifiche
+
+Richiede Node.js 24 e npm. `npm ci` installa le dipendenze bloccate nel lockfile.
+
+- `npm test`: test delle dosi, bozze, ricerca, validazione, UUID ed errori API.
+- `npm run typecheck`: controllo TypeScript.
+- `npm run build`: compilazione di produzione, possibile anche senza credenziali locali; le API richiedono la configurazione al momento dell’uso.
+- `npm run test:browser`: prove desktop/mobile in Chrome, con dati e API simulate. Richiede Google Chrome installato; nessuna ricetta reale viene modificata.
+
+La distribuzione avviene dal ramo `main` tramite Vercel, dopo avere verificato il backup dal sito. Nessuna migrazione del database è richiesta per la 6.1.
 
 ## Correzione salvataggio 6.0.1
 

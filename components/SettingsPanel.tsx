@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Category, Recipe } from "@/types/recipe";
 import { Icon } from "@/components/Icon";
+import { api, jsonBody } from "@/lib/api-client";
 
 export function SettingsPanel({
   categories,
@@ -28,6 +29,9 @@ export function SettingsPanel({
   const [system, setSystem] = useState<Record<string, { ok: boolean; label: string }> | null>(null);
   const [repairing, setRepairing] = useState(false);
   const [repairMessage, setRepairMessage] = useState("");
+  const [settingsError, setSettingsError] = useState("");
+  const [categoryBusy, setCategoryBusy] = useState(false);
+  const updateTimer = useRef<number | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   async function refreshBackupStatus() {
@@ -40,27 +44,28 @@ export function SettingsPanel({
 
   async function refreshSystem() {
     try {
-      const r = await fetch("/api/system/status", { cache: "no-store" });
-      const d = await r.json();
-      if (r.ok) setSystem(d);
-    } catch {}
+      setSettingsError("");
+      setSystem(await api<Record<string, { ok: boolean; label: string }>>("/api/system/status"));
+    } catch (error) { setSettingsError(error instanceof Error ? error.message : "Controllo del sistema non riuscito."); }
   }
 
   useEffect(() => {
     fetch("/api/version", { cache: "no-store" }).then((r) => r.json()).then((d) => d.version && setCurrentVersion(d.version)).catch(() => {});
     refreshBackupStatus();
     refreshSystem();
+    return () => { if (updateTimer.current) window.clearInterval(updateTimer.current); };
   }, []);
 
   async function addCategory() {
     const name = newCategory.trim();
-    if (!name) return;
-    const response = await fetch("/api/categories", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name }) });
-    const data = await response.json();
-    if (!response.ok) return alert(data.error || "Non riesco a creare il catalogo.");
-    setCategories([...categories.filter((x) => x.id !== data.id), data].sort((a, b) => a.name.localeCompare(b.name, "it")));
-    setNewCategory("");
-    refreshBackupStatus();
+    if (!name || categoryBusy) return;
+    setCategoryBusy(true); setSettingsError("");
+    try {
+      const data = await api<Category>("/api/categories", { method: "POST", ...jsonBody({ name }) });
+      setCategories([...categories.filter((x) => x.id !== data.id), data].sort((a, b) => a.name.localeCompare(b.name, "it")));
+      setNewCategory(""); refreshBackupStatus();
+    } catch (error) { setSettingsError(error instanceof Error ? error.message : "Catalogo non creato."); }
+    finally { setCategoryBusy(false); }
   }
 
   async function removeCategory(category: Category) {
@@ -139,14 +144,15 @@ export function SettingsPanel({
             }
           } catch {}
         }, 9000);
+        updateTimer.current = timer;
       }
     } catch (error: any) { setUpdateStatus(error?.message || "Aggiornamento non riuscito."); }
     finally { setUpdating(false); }
   }
 
   async function logout() {
-    await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
-    onLogout();
+    try { await api("/api/auth/logout", { method: "POST" }); onLogout(); }
+    catch { setSettingsError("Non riesco a chiudere la sessione sul server. Controlla la connessione e riprova."); }
   }
 
   const backupDate = backup?.latestBackupAt ? new Date(backup.latestBackupAt).toLocaleString("it-IT") : "non ancora creato";
@@ -155,6 +161,7 @@ export function SettingsPanel({
     <section className="page-section settings-page">
       <div className="section-heading compact-heading"><span className="eyebrow">Impostazioni</span><h2>Controllo totale.</h2><p>Backup, cataloghi, salute del sistema e aggiornamenti. Nessun codice da toccare.</p></div>
 
+      {settingsError ? <div className="warning-banner" role="alert">{settingsError}</div> : null}
       <div className="settings-grid">
         <div className="surface settings-card protection-card">
           <div className="settings-title"><div><span className="settings-icon"><Icon name="shield" size={20} /></span><h3>Protezione ricette</h3><p>Le ricette vivono su Supabase, hanno una copia locale e snapshot automatici. Gli aggiornamenti non modificano il database.</p></div><span className="status-pill good">Fortress</span></div>

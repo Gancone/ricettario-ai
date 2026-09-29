@@ -21,9 +21,14 @@ function looksLikeRecipe(value: any): value is Recipe {
 }
 
 function extractRecipes(value: any): Recipe[] {
-  if (Array.isArray(value)) return value.filter(looksLikeRecipe);
-  if (Array.isArray(value?.recipes)) return value.recipes.filter(looksLikeRecipe);
-  return [];
+  const list = Array.isArray(value) ? value : Array.isArray(value?.recipes) ? value.recipes : [];
+  return list.filter(looksLikeRecipe).map((recipe: Recipe) => ({
+    ...recipe,
+    category: typeof recipe.category === "string" ? recipe.category : "Senza categoria",
+    tags: Array.isArray(recipe.tags) ? recipe.tags.filter((x) => typeof x === "string") : [],
+    ingredients: recipe.ingredients.filter((x) => typeof x === "string"),
+    steps: recipe.steps.filter((x) => typeof x === "string")
+  }));
 }
 
 export function readLocalRecipeSafetyCopy(): Recipe[] {
@@ -57,7 +62,7 @@ export function readLocalRecipeSafetyCopy(): Recipe[] {
     }
     const currentDate = Date.parse(current.createdAt || "") || 0;
     const nextDate = Date.parse(recipe.createdAt || "") || 0;
-    if (nextDate >= currentDate) byId.set(recipe.id, recipe);
+    if (nextDate > currentDate) byId.set(recipe.id, recipe);
   }
 
   return [...byId.values()].sort((a, b) => (Date.parse(b.createdAt || "") || 0) - (Date.parse(a.createdAt || "") || 0));

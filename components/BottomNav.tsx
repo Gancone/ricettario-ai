@@ -15,7 +15,7 @@ export function BottomNav({ tab, onChange, shoppingCount = 0 }: { tab: AppTab; o
   return (
     <nav className="bottom-nav" aria-label="Navigazione principale">
       {items.map(([id, icon, label]) => (
-        <button key={id} type="button" className={tab === id ? "bottom-nav-item active" : "bottom-nav-item"} onClick={() => onChange(id)}>
+        <button key={id} type="button" aria-current={tab === id ? "page" : undefined} className={tab === id ? "bottom-nav-item active" : "bottom-nav-item"} onClick={() => onChange(id)}>
           <span className="bottom-nav-icon-wrap"><Icon name={icon} size={21} />{id === "shopping" && shoppingCount ? <b>{shoppingCount}</b> : null}</span>
           <span>{label}</span>
         </button>

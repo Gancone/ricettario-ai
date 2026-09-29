@@ -5,6 +5,7 @@ import { createDatabaseSnapshot, restoreIfDatabaseUnexpectedlyEmpty } from "@/li
 import { requireAppAuth } from "@/lib/app-auth";
 import { normalizeSourceUrl } from "@/lib/source-url";
 import type { Recipe } from "@/types/recipe";
+import { validateRecipe, InvalidRecipe } from "@/lib/recipe-input";
 
 async function readRecipes() {
   const { data, error } = await supabase
@@ -36,7 +37,7 @@ export async function POST(request: Request) {
   const auth = requireAppAuth(request);
   if (auth) return auth;
   try {
-    const recipe = (await request.json()) as Recipe;
+    const recipe = validateRecipe(await request.json());
     if (!recipe.id || !recipe.title?.trim()) {
       return Response.json({ error: "Titolo o ID ricetta mancante" }, { status: 400 });
     }
@@ -46,7 +47,8 @@ export async function POST(request: Request) {
 
     if (recipe.sourceUrl) {
       const normalized = normalizeSourceUrl(recipe.sourceUrl);
-      const { data: rows } = await supabase.from("recipes").select("id,source_url,title").neq("id", recipe.id).limit(1000);
+      const { data: rows, error: duplicateError } = await supabase.from("recipes").select("id,source_url,title").neq("id", recipe.id).limit(1000);
+      if (duplicateError) throw duplicateError;
       const duplicate = (rows || []).find((x) => normalizeSourceUrl(x.source_url || "") === normalized);
       if (duplicate) {
         return Response.json({ error: `Questa fonte è già salvata come “${duplicate.title}”.`, duplicateId: duplicate.id }, { status: 409 });
@@ -72,6 +74,6 @@ export async function POST(request: Request) {
     catch (e: any) { backupWarning = e?.message || "Backup automatico non riuscito"; }
     return Response.json({ ...fromDb(data), backupWarning });
   } catch (error: any) {
-    return Response.json({ error: error?.message || "Errore salvataggio ricetta" }, { status: 500 });
+    return Response.json({ error: error?.message || "Errore salvataggio ricetta" }, { status: error instanceof InvalidRecipe || error instanceof SyntaxError ? 400 : 500 });
   }
 }

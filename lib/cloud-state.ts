@@ -18,14 +18,14 @@ async function ensureBucket() {
 }
 
 export async function readJsonState<T>(path: string, fallback: T): Promise<T> {
-  try {
     await ensureBucket();
     const { data, error } = await supabase.storage.from(BUCKET).download(path);
-    if (error || !data) return fallback;
+    if (error) {
+      if (String((error as { statusCode?: string }).statusCode) === "404" || /not found|does not exist/i.test(error.message)) return fallback;
+      throw error;
+    }
+    if (!data) return fallback;
     return JSON.parse(await data.text()) as T;
-  } catch {
-    return fallback;
-  }
 }
 
 export async function writeJsonState<T>(path: string, value: T) {

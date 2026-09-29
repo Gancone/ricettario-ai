@@ -1,5 +1,13 @@
 import type { Recipe } from "@/types/recipe";
 
+function integerValue(value: number | undefined) {
+  if (value == null) return null;
+  if (!Number.isFinite(value) || value < 0 || value > 2147483647) {
+    throw new Error("Tempi e porzioni devono essere numeri validi, maggiori o uguali a zero.");
+  }
+  return Math.ceil(value);
+}
+
 function rawNutrition(row: any) {
   return row?.nutrition && typeof row.nutrition === "object" ? row.nutrition : {};
 }
@@ -58,10 +66,10 @@ export function toDb(recipe: Partial<Recipe>) {
     ingredients: recipe.ingredients || [],
     steps: recipe.steps || [],
     notes: recipe.notes || null,
-    prep_time_minutes: recipe.prepTimeMinutes ?? null,
-    cook_time_minutes: recipe.cookTimeMinutes ?? null,
-    total_time_minutes: recipe.totalTimeMinutes ?? null,
-    servings: recipe.servings ?? null,
+    prep_time_minutes: integerValue(recipe.prepTimeMinutes),
+    cook_time_minutes: integerValue(recipe.cookTimeMinutes),
+    total_time_minutes: integerValue(recipe.totalTimeMinutes),
+    servings: integerValue(recipe.servings),
     nutrition
   };
 }

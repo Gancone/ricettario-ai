@@ -1,8 +1,8 @@
 {
   "name": "Ricettario AI",
-  "version": "6.0.0",
+  "version": "6.1.0",
   "channel": "stable",
-  "description": "Versione Precision: cataloghi sempre disponibili, stime nutrizionali/porzioni complete, duplicati senza costo AI, login personale, modifica completa, preferiti, archivio, lista spesa sincronizzata, updater sicuro e UX mobile rifinita.",
+  "description": "Bozze recuperabili, inserimento manuale, ricerca migliorata, lista spesa con sincronizzazione verificata, dosi e timer corretti, controlli server e interfaccia accessibile.",
   "managedRoots": [
     "app",
     "components",

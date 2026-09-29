@@ -5,10 +5,14 @@ import { newEmptyDraft, type Category, type Recipe, type RecipeDraft } from "@/t
 import { fallbackCategories } from "@/lib/categories";
 import { displayImageUrl } from "@/lib/image-client";
 import { Icon } from "@/components/Icon";
+import { api, jsonBody } from "@/lib/api-client";
+import { DRAFT_KEY, restoreDraft } from "@/lib/draft-storage";
 
 function n(value: string) {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
+  if (!value.trim()) return undefined;
+  const parsed = Number(value.replace(",", "."));
+  if (!Number.isFinite(parsed) || parsed < 0) throw new Error("Inserisci valori numerici validi, maggiori o uguali a zero.");
+  return parsed;
 }
 
 function numberString(value: unknown) {
@@ -78,20 +82,50 @@ export function NewRecipe({
   const [duplicate, setDuplicate] = useState<Recipe | null>(null);
   const [newCategory, setNewCategory] = useState("");
   const [imageBusy, setImageBusy] = useState(false);
+  const [manual, setManual] = useState(false);
+  const [draftReady, setDraftReady] = useState(false);
+  const [draftMessage, setDraftMessage] = useState("");
   const imageInput = useRef<HTMLInputElement>(null);
+  const operation = useRef(false);
+
+  useEffect(() => {
+    try {
+      const restored = restoreDraft(localStorage.getItem(DRAFT_KEY), newEmptyDraft());
+      if (restored) { setDraft(restored.draft); setSourceText(restored.sourceText); setDraftMessage("Bozza recuperata su questo dispositivo. I file video vanno selezionati di nuovo."); }
+    } catch {}
+    setDraftReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!draftReady) return;
+    try {
+      if (draft.title || draft.ingredients || draft.steps || draft.sourceUrl || sourceText) {
+        localStorage.setItem(DRAFT_KEY, JSON.stringify({ draft, sourceText }));
+      } else localStorage.removeItem(DRAFT_KEY);
+    } catch { setDraftMessage("Non riesco a conservare la bozza sul dispositivo. Mantieni aperta la pagina fino al salvataggio."); }
+  }, [draft, sourceText, draftReady]);
+
+  function discardDraft() {
+    if (!confirm("Scartare questa bozza? Le ricette già salvate rimarranno nel ricettario.")) return;
+    setDraft({ ...newEmptyDraft(), category: availableCategories[0]?.name || "" });
+    setSourceText(""); setVideo(null); setManual(false); setWarning(""); setStatus(""); setDraftMessage("");
+  }
 
   useEffect(() => {
     if (!draft.category && availableCategories[0]?.name) setDraft((d) => ({ ...d, category: availableCategories[0].name }));
   }, [categories]);
 
-  const hasExtracted = useMemo(() => Boolean(draft.title || draft.ingredients || draft.steps), [draft]);
+  const hasExtracted = useMemo(() => manual || Boolean(draft.title || draft.ingredients || draft.steps), [draft, manual]);
   const patch = (values: Partial<RecipeDraft>) => setDraft((d) => ({ ...d, ...values }));
 
   async function extract() {
+    if (operation.current || imageBusy) return;
     if (!draft.sourceUrl.trim() && !sourceText.trim() && !video) {
       setStatus("Incolla un link oppure scegli un video.");
       return;
     }
+    if (video && video.size > 4 * 1024 * 1024) return setStatus("Il caricamento diretto supporta file fino a 4 MB. Usa un link oppure incolla la trascrizione o la didascalia.");
+    operation.current = true;
     setBusy(true);
     setDuplicate(null);
     setWarning("");
@@ -104,9 +138,7 @@ export function NewRecipe({
       form.append("categoryNames", availableCategories.map((c) => c.name).join("|"));
       if (video) form.append("video", video);
 
-      const response = await fetch("/api/extract", { method: "POST", body: form });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Estrazione non riuscita");
+      const data = await api<any>("/api/extract", { method: "POST", body: form }, 310000);
 
       if (data.duplicate && data.existingRecipe) {
         setDuplicate(data.existingRecipe);
@@ -142,6 +174,7 @@ export function NewRecipe({
     } catch (error: any) {
       setStatus(error?.message || "Qualcosa non ha funzionato.");
     } finally {
+      operation.current = false;
       setBusy(false);
     }
   }
@@ -167,7 +200,8 @@ export function NewRecipe({
   }
 
   async function uploadCover(file: File | null) {
-    if (!file) return;
+    if (!file || busy) return;
+    if (file.size > 4 * 1024 * 1024) return setStatus("La foto è troppo grande. Scegli un’immagine fino a 4 MB.");
     setImageBusy(true);
     try {
       const form = new FormData();
@@ -184,50 +218,46 @@ export function NewRecipe({
   }
 
   async function save() {
+    if (operation.current || imageBusy) return;
     if (!draft.title.trim()) return setStatus("Manca il titolo della ricetta.");
-    if (!draft.category.trim()) return setStatus("Scegli un catalogo.");
     const ingredientList = draft.ingredients.split("\n").map((x) => x.trim()).filter(Boolean);
     const stepList = draft.steps.split("\n").map((x) => x.trim()).filter(Boolean);
     if (!ingredientList.length) return setStatus("Aggiungi almeno un ingrediente.");
     if (!stepList.length) return setStatus("Aggiungi almeno un passaggio del procedimento.");
 
-    const recipe = buildRecipe(draft);
+    operation.current = true;
     setBusy(true);
     setStatus("Salvataggio sicuro su Supabase + backup…");
     try {
-      const response = await fetch("/api/recipes", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(recipe)
-      });
-      const saved = await response.json();
-      if (!response.ok) {
-        if (response.status === 409 && saved.duplicateId) throw new Error(saved.error || "Ricetta già presente");
-        throw new Error(saved.error || "Salvataggio non riuscito");
-      }
+      const recipe = buildRecipe(draft);
+      const saved = await api<Recipe & { backupWarning?: string }>("/api/recipes", { method: "POST", ...jsonBody(recipe) }, 90000);
+      try { localStorage.removeItem(DRAFT_KEY); } catch {}
       onSaved(saved);
       setDraft({ ...newEmptyDraft(), category: availableCategories[0]?.name || "" });
       setSourceText(""); setVideo(null); setWarning(""); setDuplicate(null);
+      setManual(false); setDraftMessage("");
       setStatus(saved.backupWarning ? `Salvata su Supabase. Attenzione backup: ${saved.backupWarning}` : "Salvata, sincronizzata e protetta ✓");
     } catch (error: any) {
       setStatus(`Errore: ${error?.message || "salvataggio non riuscito"}`);
-    } finally { setBusy(false); }
+    } finally { operation.current = false; setBusy(false); }
   }
 
   return (
     <section className="new-recipe-page page-section">
       <div className="section-heading compact-heading">
         <span className="eyebrow">Nuova ricetta</span>
-        <h2>Dal video al tuo ricettario.</h2>
-        <p>Prima controllo i duplicati. OpenAI viene usata solo quando serve davvero.</p>
+        <h2>Una nuova idea in cucina.</h2>
+        <p>Importa da un video o scrivi la tua ricetta. La bozza resta su questo dispositivo mentre la prepari.</p>
       </div>
 
-      <div className="new-layout">
+      <div className="draft-toolbar"><span role="status">{draftMessage || "Bozza automatica sul dispositivo"}</span><button className="button soft" type="button" onClick={discardDraft} disabled={busy || imageBusy}>Scarta bozza</button></div>
+
+      <fieldset className="new-layout" disabled={busy || imageBusy} aria-label="Preparazione della ricetta">
         <div className="surface import-card">
           <div className="step-badge"><span>1</span><div><strong>Importa la fonte</strong><small>Incolla il link del Reel, TikTok o video.</small></div></div>
           <div className="field">
             <label>Link del video</label>
-            <div className="input-with-icon"><Icon name="external" size={17} /><input inputMode="url" placeholder="https://instagram.com/..." value={draft.sourceUrl} onChange={(e) => patch({ sourceUrl: e.target.value })} /></div>
+            <div className="input-with-icon"><Icon name="external" size={17} /><input aria-label="Link del video" inputMode="url" placeholder="https://instagram.com/..." value={draft.sourceUrl} onChange={(e) => patch({ sourceUrl: e.target.value })} /></div>
           </div>
           <details className="optional-box">
             <summary>Se il link non funziona</summary>
@@ -236,8 +266,9 @@ export function NewRecipe({
               <label className="file-button"><Icon name="image" size={17} /><span>{video?.name || "Carica video/audio"}</span><input type="file" accept="video/*,audio/*" onChange={(e) => setVideo(e.target.files?.[0] || null)} /></label>
             </div>
           </details>
-          <button className="button primary big full" type="button" onClick={extract} disabled={busy}><Icon name="sparkles" size={18} />{busy ? "Elaborazione…" : "Estrai ricetta"}</button>
-          {status ? <div className="status-line">{status}</div> : null}
+          <button className="button primary big full" type="button" onClick={extract} disabled={busy || imageBusy}><Icon name="sparkles" size={18} />{busy ? "Elaborazione…" : "Estrai ricetta"}</button>
+          <div className="manual-divider">oppure</div><button className="button soft full" type="button" onClick={() => setManual(true)} disabled={busy}><Icon name="edit" size={17} />Scrivi a mano</button>
+          {status ? <div className="status-line" role="status" aria-live="polite">{status}</div> : null}
           {warning ? <div className="warning-box">{warning}</div> : null}
           {duplicate ? <div className="duplicate-box"><div><strong>Già salvata</strong><span>{duplicate.title}</span></div><button className="button soft" type="button" onClick={() => onDuplicate(duplicate)}>Apri ricetta</button></div> : null}
         </div>
@@ -254,35 +285,35 @@ export function NewRecipe({
                 <label className="cover-edit-button"><Icon name="image" size={15} />{imageBusy ? "Carico…" : "Scegli foto"}<input ref={imageInput} type="file" accept="image/jpeg,image/png,image/webp" onChange={(e) => uploadCover(e.target.files?.[0] || null)} disabled={imageBusy} /></label>
               </div>
 
-              <div className="field hero-field"><label>Titolo</label><input value={draft.title} onChange={(e) => patch({ title: e.target.value })} /></div>
+              <div className="field hero-field"><label>Titolo</label><input aria-label="Titolo" value={draft.title} onChange={(e) => patch({ title: e.target.value })} /></div>
 
               <div className="form-grid two">
                 <div className="field">
                   <label>Catalogo</label>
-                  <select value={draft.category} onChange={(e) => patch({ category: e.target.value })}><option value="">Scegli catalogo</option>{availableCategories.map((c) => <option key={`${c.id}-${c.name}`} value={c.name}>{c.name}</option>)}</select>
+                  <select aria-label="Catalogo" value={draft.category} onChange={(e) => patch({ category: e.target.value })}><option value="">Scegli catalogo</option>{availableCategories.map((c) => <option key={`${c.id}-${c.name}`} value={c.name}>{c.name}</option>)}</select>
                   <div className="quick-category-add"><input value={newCategory} onChange={(e) => setNewCategory(e.target.value)} placeholder="+ Nuovo catalogo" onKeyDown={(e) => e.key === "Enter" && addCategory()} /><button type="button" onClick={addCategory} disabled={busy}>Aggiungi</button></div>
                 </div>
-                <div className="field"><label>Tag</label><input placeholder="veloce, vegetariano…" value={draft.tags} onChange={(e) => patch({ tags: e.target.value })} /></div>
+                <div className="field"><label>Tag</label><input aria-label="Tag" placeholder="veloce, vegetariano…" value={draft.tags} onChange={(e) => patch({ tags: e.target.value })} /></div>
               </div>
 
               <details className="editor-accordion" open>
                 <summary><span>Ingredienti</span><small>{draft.ingredients.split("\n").filter(Boolean).length}</small></summary>
-                <div className="accordion-content"><div className="field"><textarea className="tall" value={draft.ingredients} onChange={(e) => patch({ ingredients: e.target.value })} placeholder="Un ingrediente per riga" /></div></div>
+                <div className="accordion-content"><div className="field"><textarea aria-label="Ingredienti" className="tall" value={draft.ingredients} onChange={(e) => patch({ ingredients: e.target.value })} placeholder="Un ingrediente per riga" /></div></div>
               </details>
 
               <details className="editor-accordion" open>
                 <summary><span>Procedimento</span><small>{draft.steps.split("\n").filter(Boolean).length}</small></summary>
-                <div className="accordion-content"><div className="field"><textarea className="tall" value={draft.steps} onChange={(e) => patch({ steps: e.target.value })} placeholder="Un passaggio per riga" /></div></div>
+                <div className="accordion-content"><div className="field"><textarea aria-label="Procedimento" className="tall" value={draft.steps} onChange={(e) => patch({ steps: e.target.value })} placeholder="Un passaggio per riga" /></div></div>
               </details>
 
               <details className="editor-accordion" open>
                 <summary><span>Tempi, porzioni e nutrizione</span><small>{draft.servings || 2} porz.</small></summary>
                 <div className="accordion-content">
                   <div className="form-grid four">
-                    <div className="field"><label>Preparazione</label><div className="input-unit"><input type="number" min="0" value={draft.prepTimeMinutes} onChange={(e) => patch({ prepTimeMinutes: e.target.value })} /><span>min</span></div></div>
-                    <div className="field"><label>Cottura</label><div className="input-unit"><input type="number" min="0" value={draft.cookTimeMinutes} onChange={(e) => patch({ cookTimeMinutes: e.target.value })} /><span>min</span></div></div>
-                    <div className="field"><label>Totale</label><div className="input-unit"><input type="number" min="0" value={draft.totalTimeMinutes} onChange={(e) => patch({ totalTimeMinutes: e.target.value })} /><span>min</span></div></div>
-                    <div className="field"><label>Porzioni</label><input type="number" min="1" value={draft.servings} onChange={(e) => patch({ servings: e.target.value })} /></div>
+                    <div className="field"><label>Preparazione</label><div className="input-unit"><input aria-label="Preparazione in minuti" type="number" min="0" value={draft.prepTimeMinutes} onChange={(e) => patch({ prepTimeMinutes: e.target.value })} /><span>min</span></div></div>
+                    <div className="field"><label>Cottura</label><div className="input-unit"><input aria-label="Cottura in minuti" type="number" min="0" value={draft.cookTimeMinutes} onChange={(e) => patch({ cookTimeMinutes: e.target.value })} /><span>min</span></div></div>
+                    <div className="field"><label>Totale</label><div className="input-unit"><input aria-label="Tempo totale in minuti" type="number" min="0" value={draft.totalTimeMinutes} onChange={(e) => patch({ totalTimeMinutes: e.target.value })} /><span>min</span></div></div>
+                    <div className="field"><label>Porzioni</label><input aria-label="Porzioni" type="number" min="1" value={draft.servings} onChange={(e) => patch({ servings: e.target.value })} /></div>
                   </div>
 
                   <div className="nutrition-edit-heading"><div><strong>Valori nutrizionali</strong><span>per porzione</span></div><label className="check-label"><input type="checkbox" checked={draft.nutritionEstimated} onChange={(e) => patch({ nutritionEstimated: e.target.checked })} /> Stima</label></div>
@@ -290,7 +321,7 @@ export function NewRecipe({
                     {[
                       ["Calorie", "calories", "kcal"], ["Proteine", "protein", "g"], ["Carboidrati", "carbs", "g"], ["Grassi", "fat", "g"],
                       ["Zuccheri", "sugars", "g"], ["Fibre", "fiber", "g"], ["Sale", "salt", "g"]
-                    ].map(([label, key, unit]) => <div className="field" key={key}><label>{label}</label><div className="input-unit"><input type="number" min="0" step="0.1" value={(draft as any)[key]} onChange={(e) => patch({ [key]: e.target.value } as any)} /><span>{unit}</span></div></div>)}
+                    ].map(([label, key, unit]) => <div className="field" key={key}><label>{label}</label><div className="input-unit"><input aria-label={label} type="number" min="0" step="0.1" value={(draft as any)[key]} onChange={(e) => patch({ [key]: e.target.value } as any)} /><span>{unit}</span></div></div>)}
                   </div>
                 </div>
               </details>
@@ -298,17 +329,18 @@ export function NewRecipe({
               <details className="editor-accordion">
                 <summary><span>Note</span><small>fonte + personali</small></summary>
                 <div className="accordion-content notes-grid">
-                  <div className="field"><label>Note dalla fonte</label><textarea value={draft.sourceNotes} onChange={(e) => patch({ sourceNotes: e.target.value })} placeholder="Informazioni utili estratte dal video…" /></div>
-                  <div className="field"><label>Le mie note personali</label><textarea value={draft.notes} onChange={(e) => patch({ notes: e.target.value })} placeholder="Es. la prossima volta meno sale…" /></div>
+                  <div className="field"><label>Note dalla fonte</label><textarea aria-label="Note dalla fonte" value={draft.sourceNotes} onChange={(e) => patch({ sourceNotes: e.target.value })} placeholder="Informazioni utili estratte dal video…" /></div>
+                  <div className="field"><label>Le mie note personali</label><textarea aria-label="Note personali" value={draft.notes} onChange={(e) => patch({ notes: e.target.value })} placeholder="Es. la prossima volta meno sale…" /></div>
                 </div>
               </details>
 
               <div className="save-safety"><Icon name="shield" size={16} /><span>Il salvataggio crea anche un backup. Gli aggiornamenti non cancellano le ricette.</span></div>
-              <button className="button primary big full sticky-save" type="button" onClick={save} disabled={busy}><Icon name="database" size={18} />{busy ? "Salvo…" : "Salva nel ricettario"}</button>
+              <button className="button primary big full sticky-save" type="button" onClick={save} disabled={busy || imageBusy}><Icon name="database" size={18} />{busy ? "Elaborazione…" : "Salva nel ricettario"}</button>
+              {status ? <div className="status-line" role="status" aria-live="polite">{status}</div> : null}
             </>
           )}
         </div>
-      </div>
+      </fieldset>
     </section>
   );
 }

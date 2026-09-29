@@ -1,7 +1,8 @@
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 :root {
-  --bg: #f3efe6;
+  color-scheme: light;
+  --bg: #e5e9e3;
   --paper: #fffdf8;
   --paper-2: #faf7f0;
   --ink: #1f2b23;
@@ -19,8 +20,8 @@ html { background: var(--bg); }
 body {
   margin: 0;
   background:
-    radial-gradient(circle at 12% 0%, rgba(255,255,255,.92), transparent 26%),
-    linear-gradient(180deg, #f6f2e9 0%, var(--bg) 100%);
+    radial-gradient(ellipse at 14% 0%, rgba(247,248,241,.5), transparent 42%),
+    linear-gradient(145deg, #eef0e9 0%, var(--bg) 54%, #dde5df 100%);
   color: var(--ink);
   font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   min-height: 100vh;
@@ -482,4 +483,78 @@ button:disabled { cursor: wait; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}
+
+/* Follow the device's appearance preference, including scheduled night mode.
+   Keep overrides after component rules so every surface uses the same palette. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --bg: #202824;
+    --paper: #29342d;
+    --paper-2: #253029;
+    --ink: #e7ece5;
+    --muted: #b3bdb5;
+    --accent: #9bc4aa;
+    --accent-dark: #b3d6bf;
+    --accent-soft: #30463a;
+    --border: #4c5c51;
+    --danger: #ef9b8d;
+    --shadow-sm: 0 8px 24px rgba(0,0,0,.16);
+    --shadow-md: 0 18px 52px rgba(0,0,0,.28);
+  }
+  body {
+    background:
+      radial-gradient(ellipse at 14% 0%, rgba(113,151,128,.12), transparent 42%),
+      linear-gradient(145deg, #242e28 0%, var(--bg) 54%, #1c2520 100%);
+  }
+  .login-page { background: transparent; }
+  .topbar, .bottom-nav { background: rgba(34,44,39,.94); border-color: var(--border); }
+  .surface { background: var(--paper); }
+  .desktop-nav, .search-wrap, .sort-select, .button.soft, .page-arrow,
+  input, textarea, select, .stats-strip, .nutrition-cell, .serving-control button,
+  .protection-stats > div, .shopping-manual input, .system-row {
+    background: var(--paper-2);
+  }
+  .search-wrap input { background: transparent; }
+  input::placeholder, textarea::placeholder { color: var(--muted); opacity: 1; }
+  .category-chip { background: var(--paper); color: var(--muted); }
+  .brand-mark, .desktop-nav button.active, .button.primary, .category-chip.active,
+  .step-badge > span, .bottom-nav-item.active, .login-mark, .floating-timer,
+  .cook-row.checked .cook-check, .shopping-row.done .shopping-check {
+    background: var(--accent); color: #17271d;
+  }
+  .button.primary:hover { background: var(--accent-dark); }
+  .floating-timer button { background: #30463a; color: var(--ink); }
+  .field label, .note-section p, .search-icon, .input-with-icon > svg { color: var(--muted); }
+  .cook-row, .personal-note { background: var(--paper-2); }
+  .cook-check, .shopping-check { border-color: #839689; }
+  .safety-ribbon, .status-line, .data-protection-note, .trusted-device,
+  .save-safety, .status-pill.good, .duplicate-box, .app-notice, .detail-status {
+    background: var(--accent-soft); color: var(--ink); border-color: var(--border);
+  }
+  .save-protection { color: var(--accent); }
+  .warning-banner, .warning-box, .safety-ribbon.offline {
+    background: #403928; color: #ead3a0; border-color: #75613d;
+  }
+  .file-button, .update-drop, .update-drop.has-file, .step-timer,
+  .quick-filters button.active { background: var(--accent-soft); border-color: var(--border); }
+  .draft-toolbar, .button.soft.active { border-color: var(--border); }
+  .recipe-card-category, .cover-edit-button { background: var(--paper); }
+  .favorite-card-button.active, .favorite-detail.active { background: var(--paper); color: #f0aaa0; }
+  .recipe-card-image-wrap, .draft-cover, .recipe-hero { background: var(--paper-2); }
+  .recipe-card-placeholder, .recipe-hero-placeholder {
+    background: radial-gradient(circle at 30% 20%, #425849, #293a2f);
+  }
+  .placeholder-monogram, .recipe-hero-placeholder span { background: var(--paper-2); border-color: var(--border); }
+  .category-select-on-image option { background: var(--paper); }
+  .shopping-progress > div { background: var(--border); }
+  .loading-grid > div { background-image: linear-gradient(90deg, #29342d, #3b4b40, #29342d); }
+  .system-row.ok .system-dot { box-shadow: 0 0 0 4px #30463a; }
+  .system-row.bad .system-dot { box-shadow: 0 0 0 4px #4a302c; }
+  :focus-visible { outline-color: var(--accent); }
+  .field input:focus, .field textarea:focus, .field select:focus,
+  .shopping-manual input:focus, .search-wrap:focus-within {
+    border-color: var(--accent); box-shadow: 0 0 0 3px rgba(155,196,170,.18);
+  }
 }

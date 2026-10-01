@@ -1,7 +1,8 @@
 import { createDatabaseSnapshot } from "@/lib/data-safety";
-import { requireAppAuth } from "@/lib/app-auth";
+import { guard } from "@/lib/backend";
+import { errorResponse } from "@/lib/validation";
 export async function POST(request: Request) {
-  const auth = requireAppAuth(request); if (auth) return auth;
+  const auth = await guard(request, "backup"); if (auth) return auth;
   try { return Response.json(await createDatabaseSnapshot("manual")); }
-  catch (error: any) { return Response.json({ error: error?.message || "Backup non riuscito" }, { status: 500 }); }
+  catch (error) { return errorResponse(error); }
 }

@@ -40,12 +40,14 @@ export function RecipeCard({
     finally { setRepairing(false); }
   }
 
+  function imageFailed() { setImageUrl(""); }
+
   return (
     <article className={recipe.archived ? "recipe-card-shell archived" : "recipe-card-shell"}>
       <button className="recipe-card" onClick={onOpen} type="button" aria-label={`Apri ${recipe.title}`}>
         <div className="recipe-card-image-wrap">
           {imageUrl ? (
-            <img className="recipe-card-image" src={displayImageUrl(imageUrl)} alt={recipe.title} loading="lazy" onError={repairImage} />
+            <img className="recipe-card-image" src={displayImageUrl(imageUrl)} alt="" loading="lazy" decoding="async" onError={imageFailed} />
           ) : (
             <div className="recipe-card-placeholder">
               <div className="placeholder-monogram">{recipe.title.trim().slice(0, 1).toUpperCase() || "R"}</div>
@@ -67,6 +69,7 @@ export function RecipeCard({
         className={recipe.favorite ? "favorite-card-button active" : "favorite-card-button"}
         type="button"
         aria-label={recipe.favorite ? "Rimuovi dai preferiti" : "Aggiungi ai preferiti"}
+        aria-pressed={!!recipe.favorite}
         onClick={(e) => { e.stopPropagation(); onToggleFavorite(); }}
       ><Icon name="heart" size={17} /></button>
       {!imageUrl && recipe.sourceUrl && !repairing ? (

@@ -1,5 +1,13 @@
 import type { Recipe } from "@/types/recipe";
 
+function integerValue(value: number | undefined) {
+  if (value == null) return null;
+  if (!Number.isFinite(value) || value < 0 || value > 2147483647) {
+    throw new Error("Tempi e porzioni devono essere numeri validi, maggiori o uguali a zero.");
+  }
+  return Math.ceil(value);
+}
+
 function rawNutrition(row: any) {
   return row?.nutrition && typeof row.nutrition === "object" ? row.nutrition : {};
 }
@@ -19,6 +27,9 @@ export function fromDb(row: any): Recipe {
 
   return {
     id: row.id,
+    revision: Number(row.revision ?? 1),
+    updatedAt: row.updated_at || row.created_at,
+    archivedAt: row.archived_at || null,
     title: row.title,
     sourceUrl: row.source_url || "",
     imageUrl: row.image_url || "",
@@ -26,31 +37,29 @@ export function fromDb(row: any): Recipe {
     tags: row.tags || [],
     ingredients: row.ingredients || [],
     steps: row.steps || [],
-    sourceNotes: String(raw._sourceNotes || ""),
+    sourceNotes: String(row.source_notes ?? raw._sourceNotes ?? ""),
     notes: row.notes || "",
     prepTimeMinutes: row.prep_time_minutes ?? undefined,
     cookTimeMinutes: row.cook_time_minutes ?? undefined,
     totalTimeMinutes: row.total_time_minutes ?? undefined,
     servings: row.servings ?? undefined,
     nutrition,
-    favorite: raw._favorite === true,
-    archived: raw._archived === true,
-    rating: Number.isFinite(Number(raw._rating)) ? Number(raw._rating) : undefined,
+    favorite: row.favorite ?? raw._favorite === true,
+    archived: row.archived ?? raw._archived === true,
+    rating: row.rating ?? (raw._rating != null && Number.isFinite(Number(raw._rating)) ? Number(raw._rating) : undefined),
     createdAt: row.created_at
   };
 }
 
 export function toDb(recipe: Partial<Recipe>) {
-  const nutrition = {
-    ...(recipe.nutrition || {}),
-    _sourceNotes: recipe.sourceNotes || "",
-    _favorite: recipe.favorite === true,
-    _archived: recipe.archived === true,
-    _rating: recipe.rating || null
-  };
+  const nutrition = Object.fromEntries(Object.entries(recipe.nutrition || {}).filter(([key]) => ['calories','protein','carbs','fat','sugars','fiber','salt','estimated'].includes(key)));
 
   return {
     title: recipe.title,
+    source_notes: recipe.sourceNotes || "",
+    favorite: recipe.favorite === true,
+    archived: recipe.archived === true,
+    rating: recipe.rating ?? null,
     source_url: recipe.sourceUrl || null,
     image_url: recipe.imageUrl || null,
     category: recipe.category || "Senza categoria",
@@ -58,10 +67,10 @@ export function toDb(recipe: Partial<Recipe>) {
     ingredients: recipe.ingredients || [],
     steps: recipe.steps || [],
     notes: recipe.notes || null,
-    prep_time_minutes: recipe.prepTimeMinutes ?? null,
-    cook_time_minutes: recipe.cookTimeMinutes ?? null,
-    total_time_minutes: recipe.totalTimeMinutes ?? null,
-    servings: recipe.servings ?? null,
+    prep_time_minutes: integerValue(recipe.prepTimeMinutes),
+    cook_time_minutes: integerValue(recipe.cookTimeMinutes),
+    total_time_minutes: integerValue(recipe.totalTimeMinutes),
+    servings: integerValue(recipe.servings),
     nutrition
   };
 }

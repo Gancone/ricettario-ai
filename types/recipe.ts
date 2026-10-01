@@ -1,3 +1,5 @@
+import { createRecipeId } from "@/lib/recipe-id";
+
 export type Nutrition = {
   calories?: number;
   protein?: number;
@@ -10,6 +12,9 @@ export type Nutrition = {
 };
 
 export type Recipe = {
+  revision?: number;
+  updatedAt?: string;
+  archivedAt?: string | null;
   id: string;
   title: string;
   sourceUrl?: string;
@@ -63,7 +68,7 @@ export type Category = {
 
 export function newEmptyDraft(): RecipeDraft {
   return {
-    id: typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `draft-${Date.now()}`,
+    id: createRecipeId(),
     title: "",
     sourceUrl: "",
     imageUrl: "",

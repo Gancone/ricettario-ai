@@ -1,12 +1,13 @@
-import { createDatabaseSnapshot, restoreLatestSnapshotAdditively } from "@/lib/data-safety";
-import { requireAppAuth } from "@/lib/app-auth";
-export async function POST(request: Request) {
-  const auth = requireAppAuth(request); if (auth) return auth;
-  try {
-    const result = await restoreLatestSnapshotAdditively();
-    if (result.restored) await createDatabaseSnapshot("post-restore");
-    return Response.json(result);
-  } catch (error: any) {
-    return Response.json({ error: error?.message || "Ripristino non riuscito" }, { status: 500 });
-  }
+import { restoreLatestSnapshotAdditively } from '@/lib/data-safety';
+import { guard } from '@/lib/backend';
+import { readJson,errorResponse,HttpError } from '@/lib/validation';
+export const maxDuration=300;
+export async function POST(request:Request){
+ const auth=await guard(request,'backup');if(auth)return auth;
+ try{
+  const input=request.body?await readJson(request):{};
+  if(input.mode&&input.mode!=='additive'&&input.mode!=='overwrite')throw new HttpError(400,'Modalità restore non valida.');
+  if(input.mode==='overwrite'&&input.confirm!=='OVERWRITE_WITH_HISTORY')throw new HttpError(400,'Conferma esplicita obbligatoria.');
+  return Response.json(await restoreLatestSnapshotAdditively(input.mode==='overwrite',input.expectedRevisions||{}));
+ }catch(e){return errorResponse(e);}
 }

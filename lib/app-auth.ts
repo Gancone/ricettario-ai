@@ -1,62 +1,44 @@
-import crypto from "crypto";
-
-export const APP_AUTH_COOKIE = "ricettario_app_auth";
-
-export function configuredAppPassword() {
-  return String(process.env.APP_PASSWORD || process.env.UPDATE_PASSWORD || "").trim();
-}
-
-function tokenFor(password: string) {
-  return crypto
-    .createHash("sha256")
-    .update(`ricettario-app-v2:${password}`)
-    .digest("hex");
-}
-
+import crypto from 'node:crypto';
+export const APP_AUTH_COOKIE = 'ricettario_app_auth';
+export function configuredAppPassword() { return String(process.env.APP_PASSWORD || '').trim(); }
 function safeEqual(a: string, b: string) {
-  const aa = Buffer.from(a);
-  const bb = Buffer.from(b);
-  return aa.length === bb.length && crypto.timingSafeEqual(aa, bb);
+  return crypto.timingSafeEqual(crypto.createHash('sha256').update(a).digest(), crypto.createHash('sha256').update(b).digest());
 }
-
+function lifetime() {
+  const value = Number(process.env.SESSION_TTL_SECONDS || 604800);
+  return Number.isFinite(value) ? Math.max(300, Math.min(2592000, Math.floor(value))) : 604800;
+}
+function signature(value: string) { return crypto.createHmac('sha256', configuredAppPassword()).update('ricettario-session-v3:' + value).digest('base64url'); }
 export function cookieValue(request: Request, name: string) {
-  const cookie = request.headers.get("cookie") || "";
-  for (const part of cookie.split(";")) {
-    const [key, ...rest] = part.trim().split("=");
-    if (key === name) return decodeURIComponent(rest.join("="));
+  for (const part of (request.headers.get('cookie') || '').split(';')) {
+    const [key, ...rest] = part.trim().split('=');
+    if (key === name) { try { return decodeURIComponent(rest.join('=')); } catch { return ''; } }
   }
-  return "";
+  return '';
 }
-
 export function isAppAuthenticated(request: Request) {
-  const password = configuredAppPassword();
-  if (!password) return true;
-  const cookie = cookieValue(request, APP_AUTH_COOKIE);
-  return Boolean(cookie && safeEqual(cookie, tokenFor(password)));
+  if (!configuredAppPassword()) return false;
+  const [expiry, nonce, sig, extra] = cookieValue(request, APP_AUTH_COOKIE).split('.');
+  const timestamp = Number(expiry);
+  return !extra && /^\d+$/.test(expiry || '') && /^[a-f0-9]{32}$/.test(nonce || '') && !!sig &&
+    timestamp > Date.now() / 1000 && timestamp <= Date.now() / 1000 + lifetime() + 60 && safeEqual(sig, signature(expiry + '.' + nonce));
 }
-
+export function requireSameOrigin(request: Request) {
+  if (['GET', 'HEAD', 'OPTIONS'].includes(request.method)) return null;
+  const origin = request.headers.get('origin');
+  if (request.headers.get('sec-fetch-site') === 'cross-site' || (origin && origin !== new URL(request.url).origin))
+    return Response.json({ error: 'Origine della richiesta non autorizzata.' }, { status: 403 });
+  return null;
+}
 export function requireAppAuth(request: Request) {
-  if (isAppAuthenticated(request)) return null;
-  return Response.json(
-    { error: "Sessione non autorizzata. Accedi al Ricettario." },
-    { status: 401, headers: { "cache-control": "no-store" } }
-  );
+  if (!configuredAppPassword()) return Response.json({ error: 'Configurazione incompleta: APP_PASSWORD obbligatoria.', code: 'AUTH_NOT_CONFIGURED' }, { status: 503, headers: { 'cache-control': 'no-store' } });
+  if (!isAppAuthenticated(request)) return Response.json({ error: 'Sessione non autorizzata. Accedi al Ricettario.' }, { status: 401, headers: { 'cache-control': 'no-store' } });
+  return requireSameOrigin(request);
 }
-
-export function validPassword(candidate: string) {
-  const password = configuredAppPassword();
-  if (!password) return true;
-  return safeEqual(candidate, password);
-}
-
+export function validPassword(candidate: string) { const password = configuredAppPassword(); return !!password && safeEqual(candidate, password); }
 export function authCookieHeader() {
-  const password = configuredAppPassword();
-  const token = tokenFor(password);
-  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
-  return `${APP_AUTH_COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=31536000${secure}`;
+  if (!configuredAppPassword()) throw new Error('APP_PASSWORD obbligatoria');
+  const body = (Math.floor(Date.now() / 1000) + lifetime()) + '.' + crypto.randomBytes(16).toString('hex');
+  return APP_AUTH_COOKIE + '=' + body + '.' + signature(body) + '; Path=/; HttpOnly; SameSite=Strict; Max-Age=' + lifetime() + (process.env.NODE_ENV === 'production' ? '; Secure' : '');
 }
-
-export function clearAuthCookieHeader() {
-  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
-  return `${APP_AUTH_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secure}`;
-}
+export function clearAuthCookieHeader() { return APP_AUTH_COOKIE + '=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0' + (process.env.NODE_ENV === 'production' ? '; Secure' : ''); }

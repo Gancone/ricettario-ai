@@ -1,21 +1,29 @@
 import { execFile } from "child_process";
 import { promisify } from "util";
-import { access, chmod, readFile, readdir, writeFile } from "fs/promises";
+import { access, chmod, readFile, readdir, stat, writeFile } from "fs/promises";
+import { createHash } from "node:crypto";
 import { tmpdir } from "os";
 import path from "path";
 
 const exec = promisify(execFile);
 const IS_WINDOWS = process.platform === "win32";
 const YTDLP_PATH = IS_WINDOWS ? "yt-dlp" : path.join(tmpdir(), "ricettario-yt-dlp-linux");
+const YTDLP_VERSION = process.env.YTDLP_VERSION || "";
+const YTDLP_SHA256 = (process.env.YTDLP_SHA256 || "").toLowerCase();
+const MAX_MEDIA_BYTES = 50 * 1024 * 1024;
 
 async function run(command: string, args: string[]) {
   return exec(command, args, { maxBuffer: 30 * 1024 * 1024, windowsHide: true });
 }
 
 export async function ensureYtDlp() {
+  if (!/^\d{4}\.\d{2}\.\d{2}$/.test(YTDLP_VERSION) || !/^[a-f0-9]{64}$/.test(YTDLP_SHA256)) {
+    throw new Error("Motore video non configurato: imposta YTDLP_VERSION e YTDLP_SHA256 con una release verificata.");
+  }
   if (IS_WINDOWS) {
     try {
-      await run("yt-dlp", ["--version"]);
+      const installed = (await run("yt-dlp", ["--version"])).stdout.trim();
+      if (installed !== YTDLP_VERSION) throw new Error("versione diversa");
       return;
     } catch {
       throw new Error("yt-dlp non è disponibile sul PC. Usa il sito pubblicato su Vercel oppure installa yt-dlp.");
@@ -28,14 +36,18 @@ export async function ensureYtDlp() {
     return;
   } catch {}
 
-  const response = await fetch("https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux", {
+  const response = await fetch(`https://github.com/yt-dlp/yt-dlp/releases/download/${YTDLP_VERSION}/yt-dlp_linux`, {
     signal: AbortSignal.timeout(45000)
   });
   if (!response.ok) throw new Error("Non riesco a preparare il motore video sul server.");
 
-  await writeFile(YTDLP_PATH, Buffer.from(await response.arrayBuffer()));
+  const bytes = Buffer.from(await response.arrayBuffer());
+  const digest = createHash("sha256").update(bytes).digest("hex");
+  if (digest !== YTDLP_SHA256) throw new Error("Verifica SHA-256 di yt-dlp fallita.");
+  await writeFile(YTDLP_PATH, bytes);
   await chmod(YTDLP_PATH, 0o755);
-  await run(YTDLP_PATH, ["--version"]);
+  const installed = (await run(YTDLP_PATH, ["--version"])).stdout.trim();
+  if (installed !== YTDLP_VERSION) throw new Error("Versione yt-dlp installata diversa da quella approvata.");
 }
 
 export async function getYtDlpMetadata(url: string) {
@@ -67,6 +79,8 @@ export async function downloadYtDlpMedia(url: string, workdir: string) {
       "--no-warnings",
       "--socket-timeout", "20",
       "--retries", "1",
+      "--max-filesize", "50M",
+      "--no-part",
       "-f", "bestaudio[ext=m4a]/bestaudio[ext=webm]/best[ext=mp4]/best",
       "-o", output,
       url
@@ -82,6 +96,7 @@ export async function downloadYtDlpMedia(url: string, workdir: string) {
   const files = await readdir(workdir);
   const found = files.find((f) => f.startsWith("source."));
   if (!found) throw new Error("Il video è stato letto ma non trovo il file multimediale.");
+  if ((await stat(path.join(workdir, found))).size > MAX_MEDIA_BYTES) throw new Error("Il video supera il limite di 50 MB.");
   return path.join(workdir, found);
 }
 

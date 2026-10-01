@@ -1,12 +1,13 @@
 import { supabase } from "@/lib/supabase";
 import { createDatabaseSnapshot } from "@/lib/data-safety";
-import { requireAppAuth } from "@/lib/app-auth";
+import { guard } from "@/lib/backend";
+import { errorResponse } from "@/lib/validation";
 
 export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = requireAppAuth(request);
+  const auth = await guard(request, "write");
   if (auth) return auth;
   try {
     const { id } = await params;
@@ -15,7 +16,5 @@ export async function DELETE(
     if (error) throw error;
     await createDatabaseSnapshot("post-category-delete");
     return Response.json({ success: true });
-  } catch (error: any) {
-    return Response.json({ error: error?.message || "Errore eliminazione categoria" }, { status: 500 });
-  }
+  } catch (error) { return errorResponse(error); }
 }

@@ -1,8 +1,14 @@
-import { exportCurrentBackup } from "@/lib/data-safety";
-import { requireAppAuth } from "@/lib/app-auth";
+import { exportCurrentBackup, exportCurrentBackupZip } from "@/lib/data-safety";
+import { guard } from "@/lib/backend";
+import { errorResponse } from "@/lib/validation";
 export async function GET(request: Request) {
-  const auth = requireAppAuth(request); if (auth) return auth;
+  const auth = await guard(request, "backup"); if (auth) return auth;
   try {
+    if (new URL(request.url).searchParams.get("format") === "zip") {
+      const payload = await exportCurrentBackupZip();
+      const date = new Date().toISOString().slice(0, 10);
+      return new Response(new Uint8Array(payload), { headers: { "content-type": "application/zip", "content-disposition": `attachment; filename="backup-ricettario-${date}.zip"`, "cache-control": "no-store" } });
+    }
     const payload = await exportCurrentBackup();
     const date = new Date().toISOString().slice(0, 10);
     return new Response(JSON.stringify(payload, null, 2), {
@@ -12,7 +18,5 @@ export async function GET(request: Request) {
         "cache-control": "no-store"
       }
     });
-  } catch (error: any) {
-    return Response.json({ error: error?.message || "Esportazione backup non riuscita" }, { status: 500 });
-  }
+  } catch (error) { return errorResponse(error); }
 }

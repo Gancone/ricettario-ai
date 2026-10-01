@@ -1,42 +1,14 @@
-import { supabase } from "@/lib/supabase";
-import { toDb, fromDb } from "@/lib/recipe-map";
-import { persistRecipeImage } from "@/lib/image-storage";
-import { createDatabaseSnapshot } from "@/lib/data-safety";
-import type { Recipe } from "@/types/recipe";
-import { requireAppAuth } from "@/lib/app-auth";
-
-export const runtime = "nodejs";
-export const maxDuration = 300;
-
-export async function POST(request: Request) {
-  const auth = requireAppAuth(request); if (auth) return auth;
-  try {
-    const body = await request.json().catch(() => ({}));
-    const recipes = Array.isArray(body?.recipes) ? (body.recipes as Recipe[]) : [];
-    if (!recipes.length) return Response.json({ recovered: 0, recipes: [] });
-    if (recipes.length > 500) return Response.json({ error: "Troppe ricette in un solo ripristino." }, { status: 413 });
-
-    const rows: any[] = [];
-    for (const recipe of recipes) {
-      if (!recipe?.id || !recipe?.title) continue;
-      const imageUrl = await persistRecipeImage(recipe.id, recipe.imageUrl);
-      rows.push({
-        id: recipe.id,
-        ...toDb({ ...recipe, imageUrl }),
-        created_at: recipe.createdAt || new Date().toISOString()
-      });
-    }
-
-    if (rows.length) {
-      const { error } = await supabase.from("recipes").upsert(rows, { onConflict: "id" });
-      if (error) throw error;
-      await createDatabaseSnapshot("local-recovery");
-    }
-
-    const { data, error } = await supabase.from("recipes").select("*").order("created_at", { ascending: false });
-    if (error) throw error;
-    return Response.json({ recovered: rows.length, recipes: (data || []).map(fromDb) });
-  } catch (error: any) {
-    return Response.json({ error: error?.message || "Ripristino ricette non riuscito" }, { status: 500 });
-  }
+import { guard,requireSchema,allRows } from '@/lib/backend';
+import { newReport,restoreRows } from '@/lib/data-safety';
+import { fromDb } from '@/lib/recipe-map';
+import { readJson,errorResponse,HttpError } from '@/lib/validation';
+export const maxDuration=300;
+export async function POST(request:Request){
+ const auth=await guard(request,'write');if(auth)return auth;
+ try{
+  await requireSchema();const body=await readJson(request,32*1024*1024);
+  if(!Array.isArray(body.recipes))throw new HttpError(400,'Elenco ricette mancante.');
+  const report=newReport();await restoreRows(body.recipes,report);
+  return Response.json({...report,recovered:report.inserted,...(body.reportOnly?{}:{recipes:(await allRows('recipes')).map(fromDb)})});
+ }catch(e){return errorResponse(e);}
 }

@@ -4,11 +4,10 @@ import { tmpdir } from "os";
 import path from "path";
 import { downloadYtDlpMedia, downloadYtDlpThumbnailBytes, getYtDlpMetadata } from "@/lib/ytdlp";
 import { persistRecipeImage, persistRecipeImageBytes } from "@/lib/image-storage";
-import { requireAppAuth } from "@/lib/app-auth";
-import { supabase } from "@/lib/supabase";
-import { fromDb } from "@/lib/recipe-map";
 import { DEFAULT_CATEGORY_NAMES, mergeCategoryNames } from "@/lib/categories";
-import { normalizeSourceUrl } from "@/lib/source-url";
+import { guard } from "@/lib/backend";
+import { findDuplicate } from "@/lib/recipe-store";
+import { errorResponse, HttpError, readForm, urlSchema } from "@/lib/validation";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -69,37 +68,23 @@ function normalizeRecipe(raw: any, categories: string[]) {
   };
 }
 
-async function findDuplicate(sourceUrl: string) {
-  const normalized = normalizeSourceUrl(sourceUrl);
-  if (!normalized) return null;
-
-  const { data, error } = await supabase
-    .from("recipes")
-    .select("*")
-    .not("source_url", "is", null)
-    .order("created_at", { ascending: false })
-    .limit(1000);
-  if (error) return null;
-
-  const row = (data || []).find((item) => normalizeSourceUrl(item.source_url || "") === normalized);
-  return row ? fromDb(row) : null;
-}
-
 export async function POST(request: Request) {
-  const auth = requireAppAuth(request);
+  const auth = await guard(request, "extract");
   if (auth) return auth;
 
   let workdir = "";
   try {
     if (!process.env.OPENAI_API_KEY) {
-      return Response.json({ error: "Manca OPENAI_API_KEY nelle variabili d'ambiente." }, { status: 500 });
+      throw new HttpError(503, "Servizio di estrazione non configurato.");
     }
 
-    const form = await request.formData();
+    const form = await readForm(request, 60 * 1024 * 1024);
     const sourceUrl = String(form.get("sourceUrl") || "").trim();
-    const sourceText = String(form.get("sourceText") || "").trim();
+    const sourceText = String(form.get("sourceText") || "").trim().slice(0, 120_000);
     const recipeId = String(form.get("recipeId") || "").trim() || crypto.randomUUID();
     const uploaded = form.get("video") as File | null;
+    if (sourceUrl) urlSchema.parse(sourceUrl);
+    if (uploaded && uploaded.size > 50 * 1024 * 1024) throw new HttpError(413, "Il video supera il limite di 50 MB.");
     const requestedCategories = String(form.get("categoryNames") || "")
       .split("|")
       .map((x) => x.trim())
@@ -156,7 +141,7 @@ export async function POST(request: Request) {
 
     if (mediaPath) {
       const transcription = await client.audio.transcriptions.create({
-        file: await OpenAI.toFile(await readFile(mediaPath), path.basename(mediaPath)),
+        file: await OpenAI.toFile(await readFile(/* turbopackIgnore: true */ mediaPath), path.basename(mediaPath)),
         model: "gpt-4o-mini-transcribe"
       });
       transcript = [transcript, transcription.text].filter(Boolean).join("\n\n");
@@ -170,6 +155,7 @@ export async function POST(request: Request) {
     const response = await client.responses.create({
       model: "gpt-4o-mini",
       store: false,
+      max_output_tokens: 1800,
       input: `Trasforma il contenuto seguente in una ricetta italiana chiara e fedele. Devi produrre una scheda completa anche quando il video non dichiara tutti i dati.\n\nREGOLE DI FEDELTÀ:\n- Ingredienti e procedimento devono derivare dal contenuto. Non inventare quantità mancanti: se la quantità non è disponibile, scrivi solo il nome dell'ingrediente.\n- Elimina saluti, sponsor, pubblicità e parti non pertinenti.\n- sourceNotes contiene SOLO informazioni utili provenienti dalla fonte o incertezze dell'estrazione. Non scrivere frasi decorative.\n\nSTIME OBBLIGATORIE:\n- Se tempi, porzioni o valori nutrizionali non sono dichiarati, STIMALI in modo culinariamente plausibile usando ingredienti, quantità e tipo di piatto. Non lasciare questi campi a zero soltanto perché il video non li dice.\n- servings deve essere un intero plausibile da 1 a 12; se non è chiaro, usa la stima più probabile (spesso 2 o 4).\n- I valori nutrizionali sono PER PORZIONE: calories in kcal; protein, carbs, fat, sugars, fiber e salt in grammi.\n- nutrition.estimated deve essere true quando almeno un valore è stimato.\n- totalTimeMinutes deve essere almeno prepTimeMinutes + cookTimeMinutes.\n\nCATALOGO:\n- suggestedCategory deve essere ESATTAMENTE uno di questi valori: ${categories.join(", ")}.\n- Scegli il catalogo più coerente con il piatto.\n\nRestituisci SOLO JSON valido, senza markdown, con questa forma:\n{\n  "title": "string",\n  "suggestedCategory": "string",\n  "ingredients": ["string"],\n  "steps": ["string"],\n  "sourceNotes": "string",\n  "prepTimeMinutes": 10,\n  "cookTimeMinutes": 15,\n  "totalTimeMinutes": 25,\n  "servings": 2,\n  "nutrition": {\n    "calories": 450,\n    "protein": 20,\n    "carbs": 55,\n    "fat": 16,\n    "sugars": 6,\n    "fiber": 5,\n    "salt": 1.2,\n    "estimated": true\n  }\n}\n\nURL FONTE:\n${sourceUrl || "nessuno"}\n\nCONTENUTO:\n${context}`
     });
 
@@ -186,9 +172,9 @@ export async function POST(request: Request) {
       recipeId,
       warning
     });
-  } catch (error: any) {
-    console.error("EXTRACT ERROR", error);
-    return Response.json({ error: error?.message || "Errore durante l'estrazione." }, { status: 500 });
+  } catch (error) {
+    console.error("EXTRACT ERROR", error instanceof Error ? error.message : "unknown");
+    return errorResponse(error);
   } finally {
     if (workdir) {
       try { await rm(workdir, { recursive: true, force: true }); } catch {}

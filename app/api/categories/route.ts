@@ -1,7 +1,8 @@
 import { supabase } from "@/lib/supabase";
 import { createDatabaseSnapshot } from "@/lib/data-safety";
 import { DEFAULT_CATEGORY_NAMES } from "@/lib/categories";
-import { requireAppAuth } from "@/lib/app-auth";
+import { guard, requireSchema } from "@/lib/backend";
+import { categorySchema, readJson, errorResponse } from "@/lib/validation";
 
 async function ensureDefaults() {
   const { error } = await supabase
@@ -17,35 +18,31 @@ async function readCategories() {
 }
 
 export async function GET(request: Request) {
-  const auth = requireAppAuth(request);
+  const auth = await guard(request);
   if (auth) return auth;
   try {
+    await requireSchema();
     await ensureDefaults();
     const categories = await readCategories();
     return Response.json(categories, { headers: { "cache-control": "no-store, max-age=0" } });
-  } catch (error: any) {
-    return Response.json({ error: error?.message || "Errore caricamento categorie" }, { status: 500 });
-  }
+  } catch (error) { return errorResponse(error); }
 }
 
 export async function POST(request: Request) {
-  const auth = requireAppAuth(request);
+  const auth = await guard(request, "write");
   if (auth) return auth;
   try {
-    const { name } = await request.json();
-    const clean = String(name || "").trim();
-    if (!clean) return Response.json({ error: "Nome categoria mancante" }, { status: 400 });
+    await requireSchema();
+    const { name } = categorySchema.parse(await readJson(request, 32 * 1024));
 
     const { data, error } = await supabase
       .from("categories")
-      .upsert({ name: clean }, { onConflict: "name" })
+      .upsert({ name }, { onConflict: "name" })
       .select("id,name")
       .single();
 
     if (error) throw error;
     await createDatabaseSnapshot("category-save").catch(() => {});
     return Response.json(data);
-  } catch (error: any) {
-    return Response.json({ error: error?.message || "Errore creazione categoria" }, { status: 500 });
-  }
+  } catch (error) { return errorResponse(error); }
 }

@@ -124,9 +124,9 @@ export function SettingsPanel({
       const response = await fetch("/api/admin/update", { method: "POST", body: form });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Aggiornamento non riuscito");
-      setUpdateStatus(`Backup verificato. Vercel sta installando la versione ${data.version}…`);
+      setUpdateStatus(data.message || `Backup verificato. Anteprima ${data.version} creata.`);
       setUpdateFile(null); if (fileRef.current) fileRef.current.value = "";
-      if (data.version && data.version !== currentVersion) {
+      if (!data.branch && data.version && data.version !== currentVersion) {
         const started = Date.now();
         const timer = window.setInterval(async () => {
           if (Date.now() - started > 5 * 60 * 1000) {
@@ -174,7 +174,7 @@ export function SettingsPanel({
         <div className="surface settings-card system-card">
           <div className="settings-title"><div><span className="settings-icon"><Icon name="database" size={20} /></span><h3>Stato del sistema</h3><p>Un controllo rapido senza consumare credito OpenAI.</p></div><button className="button soft tiny-button" onClick={refreshSystem} type="button"><Icon name="refresh" size={14} />Controlla</button></div>
           <div className="system-grid">
-            {system ? (Object.entries(system) as Array<[string, { ok: boolean; label: string }]>).map(([key, item]) => <div className={item.ok ? "system-row ok" : "system-row bad"} key={key}><span className="system-dot"/><div><strong>{key === "auth" ? "Accesso" : key === "openai" ? "OpenAI" : key === "updates" ? "Aggiornamenti" : key === "supabase" ? "Supabase" : key === "backup" ? "Backup" : "Immagini"}</strong><small>{item.label}</small></div></div>) : <div className="muted-line">Controllo in corso…</div>}
+            {system ? (Object.entries(system) as Array<[string, { ok: boolean; label: string }]>).filter(([,item])=>item && typeof item==='object').map(([key, item]) => <div className={item.ok ? "system-row ok" : "system-row bad"} key={key}><span className="system-dot"/><div><strong>{key === "auth" ? "Accesso" : key === "openai" ? "OpenAI" : key === "updates" ? "Aggiornamenti" : key === "supabase" ? "Supabase" : key === "backup" ? "Backup" : key === "schema" ? "Database" : key === "video" ? "Video" : "Immagini"}</strong><small>{item.label}</small></div></div>) : <div className="muted-line">Controllo in corso…</div>}
           </div>
         </div>
 

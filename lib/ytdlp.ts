@@ -8,12 +8,13 @@ import path from "path";
 const exec = promisify(execFile);
 const IS_WINDOWS = process.platform === "win32";
 const YTDLP_PATH = IS_WINDOWS ? "yt-dlp" : path.join(tmpdir(), "ricettario-yt-dlp-linux");
-const YTDLP_VERSION = process.env.YTDLP_VERSION || "";
-const YTDLP_SHA256 = (process.env.YTDLP_SHA256 || "").toLowerCase();
+// Official yt-dlp/yt-dlp release asset digest, verified when preparing this release.
+export const YTDLP_VERSION = process.env.YTDLP_VERSION || "2026.08.19";
+export const YTDLP_SHA256 = (process.env.YTDLP_SHA256 || (process.env.YTDLP_VERSION ? "" : "58162f9bfdc27458ea47bfcb311cf47028f17d8154a8bf7d689861d46399230a")).toLowerCase();
 const MAX_MEDIA_BYTES = 50 * 1024 * 1024;
 
 async function run(command: string, args: string[]) {
-  return exec(command, args, { maxBuffer: 30 * 1024 * 1024, windowsHide: true });
+  return exec(command, args, { maxBuffer: 30 * 1024 * 1024, windowsHide: true, timeout: 120000 });
 }
 
 export async function ensureYtDlp() {
@@ -32,8 +33,11 @@ export async function ensureYtDlp() {
 
   try {
     await access(YTDLP_PATH);
-    await run(YTDLP_PATH, ["--version"]);
-    return;
+    const cached=await readFile(/* turbopackIgnore: true */ YTDLP_PATH);
+    if(createHash('sha256').update(cached).digest('hex')===YTDLP_SHA256){
+      const installed=(await run(YTDLP_PATH, ["--version"])).stdout.trim();
+      if(installed===YTDLP_VERSION)return;
+    }
   } catch {}
 
   const response = await fetch(`https://github.com/yt-dlp/yt-dlp/releases/download/${YTDLP_VERSION}/yt-dlp_linux`, {

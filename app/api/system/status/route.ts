@@ -1,11 +1,12 @@
-import { configuredAppPassword } from "@/lib/app-auth";
+import { configuredAppPassword, requireAppAuth } from "@/lib/app-auth";
 import { guard, requireSchema, SCHEMA_VERSION } from "@/lib/backend";
 import { supabase } from "@/lib/supabase";
 import { backupStatus } from "@/lib/data-safety";
 import { ensureImageBucket } from "@/lib/image-storage";
+import { YTDLP_VERSION,YTDLP_SHA256 } from "@/lib/ytdlp";
 
 export async function GET(request: Request) {
-  const auth = await guard(request); if (auth) return auth;
+  const auth = requireAppAuth(request); if (auth) return auth;
   const status: Record<string, any> = {
     appVersion: process.env.npm_package_version || "6.2.0",
     schema: { ok: false, version: SCHEMA_VERSION, label: "Migrazione richiesta" },
@@ -13,7 +14,7 @@ export async function GET(request: Request) {
     openai: { ok: Boolean(process.env.OPENAI_API_KEY), label: process.env.OPENAI_API_KEY ? "Configurata" : "Chiave mancante" },
     updates: { ok: Boolean(process.env.GITHUB_UPDATE_TOKEN && process.env.GITHUB_OWNER && process.env.GITHUB_REPO), label: "" },
     supabase: { ok: false, label: "" }, backup: { ok: false, label: "" }, images: { ok: false, label: "" },
-    video: { ok: Boolean(process.env.YTDLP_VERSION && process.env.YTDLP_SHA256), label: process.env.YTDLP_VERSION && process.env.YTDLP_SHA256 ? "Versione verificata" : "Pin SHA-256 mancante" }
+    video: { ok: Boolean(YTDLP_VERSION && YTDLP_SHA256), label: YTDLP_VERSION && YTDLP_SHA256 ? `Release ${YTDLP_VERSION} con verifica SHA-256` : "Pin SHA-256 mancante" }
   };
   status.updates.label = status.updates.ok ? "Configurati" : "Configurazione incompleta";
   try { await requireSchema(); status.schema = { ok: true, version: SCHEMA_VERSION, label: "Schema aggiornato" }; }

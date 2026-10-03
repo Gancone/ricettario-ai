@@ -2,7 +2,7 @@ import { supabase } from './supabase';
 import crypto from 'node:crypto';
 import { requireAppAuth, configuredAppPassword, requireSameOrigin } from './app-auth';
 import { HttpError, errorResponse } from './validation';
-export const SCHEMA_VERSION = '001_backend_safety';
+export const SCHEMA_VERSION = '002_shopping_read';
 export async function requireSchema() {
  const {data,error}=await supabase.from('schema_migrations').select('id').eq('id',SCHEMA_VERSION).maybeSingle();
  if(error||!data) throw new HttpError(503,'Schema database non aggiornato. Esegui npm run db:migrate.',{code:'SCHEMA_NOT_READY'});

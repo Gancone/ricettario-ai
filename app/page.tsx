@@ -175,7 +175,7 @@ export default function Home() {
           <button className={tab === "shopping" ? "active" : ""} onClick={() => setTab("shopping")}><Icon name="bag" size={16} />Spesa {shoppingRemaining ? <b>{shoppingRemaining}</b> : null}</button>
           <button className={tab === "settings" ? "active" : ""} onClick={() => setTab("settings")}><Icon name="settings" size={16} />Altro</button>
         </nav>
-        <span className="version-top">v6.1</span>
+        <span className="version-top">v6.2</span>
       </header>
 
       <main className="main-content">

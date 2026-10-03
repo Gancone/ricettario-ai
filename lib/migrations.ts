@@ -1,5 +1,4 @@
 import { Client } from 'pg';
-import { createRequire } from 'node:module';
 import { readdir,readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -7,12 +6,16 @@ import { supabase } from './supabase';
 import { encodeChunk,sealManifest,type Chunk } from './backup-format';
 import { checksum } from './backup-format';
 import { HttpError } from './validation';
-const pkg = createRequire(import.meta.url)('../package.json') as { version: string };
+import pkg from '../package.json' with { type: 'json' };
 export async function migrateDatabase(){
  const connectionString=process.env.DATABASE_URL;
  if(!connectionString)throw new HttpError(503,'DATABASE_URL amministrativa mancante. Il service-role REST non può eseguire migrazioni DDL.');
  const client=new Client({connectionString,connectionTimeoutMillis:15000,statement_timeout:180000});
- await client.connect();const applied:string[]=[];
+ try { await client.connect(); } catch(error) {
+  const code=(error as {code?:string}).code;
+  throw new HttpError(503,code==='28P01'?'La password in DATABASE_URL non è valida.':code==='ENOTFOUND'||code==='ENETUNREACH'?'Host DATABASE_URL non raggiungibile: verifica la connessione pooler Supabase.':'Connessione PostgreSQL non riuscita: verifica DATABASE_URL.');
+ }
+ const applied:string[]=[];
  try{
   await client.query('SELECT pg_advisory_lock(867530901)');
   await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ');
@@ -31,6 +34,17 @@ export async function migrateDatabase(){
     if(found.error&&!/not found|does not exist/i.test(found.error.message))throw found.error;
     const configured=found.data?await supabase.storage.updateBucket(bucket,options):await supabase.storage.createBucket(bucket,options);if(configured.error)throw configured.error;
     const id='backups/pre-migration-'+Date.now()+'-'+randomUUID();const chunks:Chunk[]=[];const counts:Record<string,number>={recipes:0,categories:0};
+    const legacy=await supabase.storage.from('ricettario-state').download('shopping.json');
+    if(legacy.error && !/not found|does not exist/i.test(legacy.error.message) && String((legacy.error as any).statusCode)!=='404')throw legacy.error;
+    let legacyShopping:any[]=[];
+    if(legacy.data){
+     if(legacy.data.size>2*1024*1024)throw new Error('Lista legacy troppo grande');
+     const bytes=Buffer.from(await legacy.data.arrayBuffer());const parsed=JSON.parse(bytes.toString('utf8'));
+     if(!Array.isArray(parsed))throw new Error('Formato lista legacy non valido');
+     legacyShopping=parsed;
+     const saved=await supabase.storage.from(bucket).upload(id+'/shopping-legacy.json',bytes,{contentType:'application/json',upsert:false});if(saved.error)throw saved.error;
+     const copy=await supabase.storage.from(bucket).download(id+'/shopping-legacy.json');if(copy.error||!copy.data||checksum(Buffer.from(await copy.data.arrayBuffer()))!==checksum(bytes))throw new Error('Backup spesa non verificato');
+    }
     for(const table of ['recipes','categories','shopping_items','recipe_versions'] as const){
      const exists=await client.query('SELECT to_regclass($1) AS name',['public.'+table]);if(!exists.rows[0].name)continue;
      await client.query('DECLARE migration_rows NO SCROLL CURSOR FOR SELECT * FROM public.'+table+' ORDER BY id');
@@ -46,6 +60,7 @@ export async function migrateDatabase(){
     const result=await supabase.storage.from(bucket).upload(id+'/manifest.json',Buffer.from(JSON.stringify(manifest)),{contentType:'application/json',upsert:false});if(result.error)throw result.error;
     // Never replace existing backup pointers as part of a migration.
     for(const migration of pending){await client.query(migration.sql);await client.query('INSERT INTO public.schema_migrations(id,checksum) VALUES($1,$2)',[migration.id,migration.hash]);applied.push(migration.id);}
+    if(legacyShopping.length && pending.some(m=>m.id==='001_backend_safety'))await client.query('SELECT public.shopping_apply(NULL,$1::jsonb,false)',[JSON.stringify(legacyShopping)]);
    }
    await client.query('COMMIT');
   }catch(e){await client.query('ROLLBACK');throw e;}

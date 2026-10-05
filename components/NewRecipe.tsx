@@ -262,7 +262,7 @@ export function NewRecipe({
           <details className="optional-box">
             <summary>Se il link non funziona</summary>
             <div className="optional-content">
-              <div className="field"><label>Testo o didascalia</label><textarea placeholder="Incolla la didascalia del post…" value={sourceText} onChange={(e) => setSourceText(e.target.value)} /></div>
+              <div className="field"><label>Testo o didascalia</label><textarea aria-label="Testo o didascalia" placeholder="Incolla la didascalia del post…" value={sourceText} onChange={(e) => setSourceText(e.target.value)} /></div>
               <label className="file-button"><Icon name="image" size={17} /><span>{video?.name || "Carica video/audio"}</span><input type="file" accept="video/*,audio/*" onChange={(e) => setVideo(e.target.files?.[0] || null)} /></label>
             </div>
           </details>
@@ -291,7 +291,7 @@ export function NewRecipe({
                 <div className="field">
                   <label>Catalogo</label>
                   <select aria-label="Catalogo" value={draft.category} onChange={(e) => patch({ category: e.target.value })}><option value="">Scegli catalogo</option>{availableCategories.map((c) => <option key={`${c.id}-${c.name}`} value={c.name}>{c.name}</option>)}</select>
-                  <div className="quick-category-add"><input value={newCategory} onChange={(e) => setNewCategory(e.target.value)} placeholder="+ Nuovo catalogo" onKeyDown={(e) => e.key === "Enter" && addCategory()} /><button type="button" onClick={addCategory} disabled={busy}>Aggiungi</button></div>
+                  <div className="quick-category-add"><input aria-label="Nuovo catalogo" value={newCategory} onChange={(e) => setNewCategory(e.target.value)} placeholder="+ Nuovo catalogo" onKeyDown={(e) => e.key === "Enter" && addCategory()} /><button type="button" onClick={addCategory} disabled={busy}>Aggiungi</button></div>
                 </div>
                 <div className="field"><label>Tag</label><input aria-label="Tag" placeholder="veloce, vegetariano…" value={draft.tags} onChange={(e) => patch({ tags: e.target.value })} /></div>
               </div>
@@ -334,7 +334,7 @@ export function NewRecipe({
                 </div>
               </details>
 
-              <div className="save-safety"><Icon name="shield" size={16} /><span>Il salvataggio crea anche un backup. Gli aggiornamenti non cancellano le ricette.</span></div>
+              <div className="save-safety"><Icon name="shield" size={16} /><span>La tua ricetta viene salvata con una copia di sicurezza.</span></div>
               <button className="button primary big full sticky-save" type="button" onClick={save} disabled={busy || imageBusy}><Icon name="database" size={18} />{busy ? "Elaborazione…" : "Salva nel ricettario"}</button>
               {status ? <div className="status-line" role="status" aria-live="polite">{status}</div> : null}
             </>

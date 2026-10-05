@@ -54,15 +54,15 @@ export function RecipeCard({
               <small>{repairing ? "Recupero foto…" : "Foto non disponibile"}</small>
             </div>
           )}
-          <div className="recipe-card-gradient" />
-          <span className="recipe-card-category">{recipe.archived ? "Archiviata" : recipe.category}</span>
-          <div className="recipe-card-copy">
+        </div>
+        <div className="recipe-card-copy">
+            <span className="recipe-card-category">{recipe.archived ? "Archiviata" : recipe.category}</span>
             <h3>{recipe.title}</h3>
             <div className="recipe-card-meta">
               {recipe.totalTimeMinutes ? <span><Icon name="clock" size={13} />{recipe.totalTimeMinutes} min</span> : null}
               {recipe.nutrition?.calories !== undefined ? <span><Icon name="flame" size={13} />{recipe.nutrition.calories} kcal</span> : null}
+              {recipe.servings ? <span><Icon name="users" size={13} />{recipe.servings} porz.</span> : null}
             </div>
-          </div>
         </div>
       </button>
       <button

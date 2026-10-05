@@ -1,4 +1,4 @@
-const CACHE = "ricettario-shell-v6-1-comfort";
+const CACHE = "ricettario-shell-v6-3-garden";
 const SHELL = ["/", "/manifest.webmanifest", "/icons/icon-192.png", "/icons/icon-512.png"];
 
 self.addEventListener("install", (event) => {

@@ -159,12 +159,12 @@ export function SettingsPanel({
 
   return (
     <section className="page-section settings-page">
-      <div className="section-heading compact-heading"><span className="eyebrow">Impostazioni</span><h2>Controllo totale.</h2><p>Backup, cataloghi, salute del sistema e aggiornamenti. Nessun codice da toccare.</p></div>
+      <div className="section-heading compact-heading"><span className="eyebrow">Il tuo spazio</span><h2>Ogni cosa al suo posto.</h2><p>Gestisci i cataloghi, conserva una copia delle ricette e controlla che tutto funzioni.</p></div>
 
       {settingsError ? <div className="warning-banner" role="alert">{settingsError}</div> : null}
       <div className="settings-grid">
         <div className="surface settings-card protection-card">
-          <div className="settings-title"><div><span className="settings-icon"><Icon name="shield" size={20} /></span><h3>Protezione ricette</h3><p>Le ricette vivono su Supabase, hanno una copia locale e snapshot automatici. Gli aggiornamenti non modificano il database.</p></div><span className="status-pill good">Fortress</span></div>
+          <div className="settings-title"><div><span className="settings-icon"><Icon name="shield" size={20} /></span><h3>Al sicuro, sempre con te.</h3><p>Le ricette sono salvate online. Qui puoi creare una copia di sicurezza, scaricarla o recuperare un backup.</p></div><span className="status-pill good">Backup</span></div>
           <div className="protection-stats"><div><strong>{backup?.recipes ?? recipes.length}</strong><span>ricette su Supabase</span></div><div><strong>{backup?.latestBackupRecipes ?? "–"}</strong><span>nell’ultimo backup</span></div></div>
           <div className="backup-last"><Icon name="cloud" size={16} /><span>Ultimo backup: <b>{backupDate}</b></span></div>
           <div className="button-row"><button className="button primary" disabled={backupBusy} type="button" onClick={createBackup}><Icon name="shield" size={16} /> Backup ora</button><a className="button soft" href="/api/backup/export"><Icon name="download" size={16} /> Scarica JSON</a><button className="button soft" disabled={backupBusy} type="button" onClick={restoreBackup}><Icon name="refresh" size={16} /> Ripristina</button></div>
@@ -179,26 +179,26 @@ export function SettingsPanel({
         </div>
 
         <div className="surface settings-card">
-          <div className="settings-title"><div><span className="settings-icon"><Icon name="tag" size={20} /></span><h3>Cataloghi</h3><p>I cataloghi base vengono sempre ricreati se mancanti.</p></div><span className="count-pill">{categories.length}</span></div>
+          <div className="settings-title"><div><span className="settings-icon"><Icon name="tag" size={20} /></span><h3>I tuoi cataloghi</h3><p>Un posto per ogni ricetta: organizza la raccolta come preferisci.</p></div><span className="count-pill">{categories.length}</span></div>
           <div className="category-manager">{categories.map((c) => <div className="category-manager-row" key={`${c.id}-${c.name}`}><span>{c.name}</span><small>{recipes.filter((r) => r.category === c.name && !r.archived).length}</small><button type="button" className="tiny-danger" onClick={() => removeCategory(c)}>{c.id < 0 ? "Base" : "Rimuovi"}</button></div>)}</div>
-          <div className="inline-add"><input value={newCategory} onChange={(e) => setNewCategory(e.target.value)} placeholder="Nuovo catalogo…" onKeyDown={(e) => e.key === "Enter" && addCategory()} /><button className="button primary" type="button" onClick={addCategory}><Icon name="plus" size={16} />Aggiungi</button></div>
+          <div className="inline-add"><input aria-label="Nuovo catalogo" value={newCategory} onChange={(e) => setNewCategory(e.target.value)} placeholder="Nuovo catalogo…" onKeyDown={(e) => e.key === "Enter" && addCategory()} /><button className="button primary" type="button" onClick={addCategory}><Icon name="plus" size={16} />Aggiungi</button></div>
         </div>
 
         <div className="surface settings-card">
-          <div className="settings-title"><div><span className="settings-icon"><Icon name="image" size={20} /></span><h3>Copertine</h3><p>Il recupero massivo non parte più a ogni apertura. Lo avvii tu solo quando serve.</p></div></div>
+          <div className="settings-title"><div><span className="settings-icon"><Icon name="image" size={20} /></span><h3>Copertine</h3><p>Una foto manca? Prova a recuperarla dalla fonte originale.</p></div></div>
           <button className="button soft full" disabled={repairing} type="button" onClick={repairImages}><Icon name="image" size={16} />{repairing ? "Recupero…" : "Ripara copertine mancanti"}</button>
           {repairMessage ? <div className="status-line">{repairMessage}</div> : null}
         </div>
 
         <div className="surface settings-card update-card">
-          <div className="settings-title"><div><span className="settings-icon"><Icon name="refresh" size={20} /></span><h3>Aggiornamenti ZIP</h3><p>Non c'è più una seconda password: se hai effettuato l'accesso al Ricettario, puoi aggiornare. Se il backup pre-update fallisce, l'aggiornamento viene bloccato.</p></div><span className="version-pill">v{currentVersion}</span></div>
+          <div className="settings-title"><div><span className="settings-icon"><Icon name="refresh" size={20} /></span><h3>Aggiorna il ricettario</h3><p>Hai un pacchetto ZIP? Caricalo qui per preparare l’aggiornamento. Prima viene verificata una copia di sicurezza.</p></div><span className="version-pill">v{currentVersion}</span></div>
           <label className={updateFile ? "update-drop has-file" : "update-drop"}><Icon name="download" size={28} /><strong>{updateFile?.name || "Trascina o scegli lo ZIP"}</strong><span>Il pacchetto aggiorna solo il codice. Le ricette restano su Supabase.</span><input ref={fileRef} type="file" accept=".zip,application/zip" onChange={(e) => setUpdateFile(e.target.files?.[0] || null)} /></label>
           <button className="button primary full" type="button" disabled={!updateFile || updating} onClick={installUpdate}><Icon name="refresh" size={16} />{updating ? "Aggiorno…" : "Installa aggiornamento"}</button>
           {updateStatus ? <div className="status-line">{updateStatus}</div> : null}
         </div>
 
         <div className="surface settings-card account-card">
-          <div className="settings-title"><div><span className="settings-icon"><Icon name="lock" size={20} /></span><h3>Accesso personale</h3><p>La stessa sessione protegge ricette, OpenAI e aggiornamenti. Resta memorizzata sul dispositivo.</p></div></div>
+          <div className="settings-title"><div><span className="settings-icon"><Icon name="lock" size={20} /></span><h3>Accesso personale</h3><p>La sessione resta memorizzata su questo dispositivo. Puoi uscire quando vuoi.</p></div></div>
           <button className="button soft" type="button" onClick={logout}><Icon name="logout" size={16} /> Esci da questo dispositivo</button>
         </div>
       </div>

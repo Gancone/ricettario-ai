@@ -1,4 +1,17 @@
-# Ricettario AI 6.1 — La tua cucina, ogni giorno
+# Ricettario AI 6.3 — La tua cucina, ogni giorno
+
+## Novità della 6.3
+
+- Palette salvia con aspetto chiaro e scuro automatico, superfici morbide e illustrazione locale.
+- Titoli completi sotto le foto, senza sovrapposizione alle immagini o ai preferiti.
+- Griglie adattabili e testi lunghi contenuti in ricette, ingredienti, spesa, cataloghi e nomi ZIP.
+- Dettaglio ricetta con testata che cresce con il titolo; testi del sistema leggibili senza ellissi.
+- Editor e impostazioni più leggibili, pulsanti comodi da telefono e accesso da tastiera.
+
+Verificata in Chrome a 320, 390, 768 e 1280 px, in modalità chiara e scura,
+con titoli, ingredienti e nomi file molto lunghi. Le prove coprono anche salvataggio,
+bozze, errori di rete, spesa offline e accesso. La 6.3 non aggiunge migrazioni:
+usa `001_backend_safety` e `002_shopping_read` della 6.2.
 
 ## Novità della 6.1
 

@@ -9,6 +9,7 @@ import { SettingsPanel } from "@/components/SettingsPanel";
 import { ShoppingList } from "@/components/ShoppingList";
 import { LoginScreen } from "@/components/LoginScreen";
 import { Icon } from "@/components/Icon";
+import { KitchenSprig } from "@/components/KitchenSprig";
 import { fallbackCategories } from "@/lib/categories";
 import { mergeRecipes, readLocalRecipeSafetyCopy, writeLocalRecipeSafetyCopy } from "@/lib/local-cache";
 import type { Category, Recipe } from "@/types/recipe";
@@ -81,10 +82,10 @@ export default function Home() {
             .then(({ ok, data }) => {
               if (cancelled || !ok || !Array.isArray(data.recipes)) return;
               setRecipes(data.recipes); writeLocalRecipeSafetyCopy(data.recipes);
-              setSafetyMessage(`Fortress attiva · ${data.recipes.length} ricette sincronizzate e protette.`);
+              setSafetyMessage(`${data.recipes.length} ricette sincronizzate · copia di sicurezza attiva`);
             }).catch(() => {});
         } else {
-          setSafetyMessage(serverRecipes.length ? "Fortress attiva · Supabase + copia locale + backup automatici." : "Ricettario vuoto: i nuovi salvataggi saranno protetti automaticamente.");
+          setSafetyMessage(serverRecipes.length ? "Ricette sincronizzate · copia di sicurezza attiva" : "Le tue nuove ricette saranno protette automaticamente.");
         }
       })
       .catch((e) => {
@@ -170,22 +171,25 @@ export default function Home() {
       <header className="topbar">
         <button type="button" className="brand" onClick={() => { setTab("recipes"); setCategory("Tutte"); }}><span className="brand-mark"><Icon name="book" size={21} /></span><span><strong>Ricettario</strong><small>personale & protetto</small></span></button>
         <nav className="desktop-nav" aria-label="Navigazione principale">
-          <button className={tab === "recipes" ? "active" : ""} onClick={() => setTab("recipes")}><Icon name="book" size={16} />Ricette</button>
-          <button className={tab === "new" ? "active" : ""} onClick={() => setTab("new")}><Icon name="plus" size={16} />Nuova</button>
-          <button className={tab === "shopping" ? "active" : ""} onClick={() => setTab("shopping")}><Icon name="bag" size={16} />Spesa {shoppingRemaining ? <b>{shoppingRemaining}</b> : null}</button>
-          <button className={tab === "settings" ? "active" : ""} onClick={() => setTab("settings")}><Icon name="settings" size={16} />Altro</button>
+          <button aria-current={tab === "recipes" ? "page" : undefined} className={tab === "recipes" ? "active" : ""} onClick={() => setTab("recipes")}><Icon name="book" size={16} />Ricette</button>
+          <button aria-current={tab === "new" ? "page" : undefined} className={tab === "new" ? "active" : ""} onClick={() => setTab("new")}><Icon name="plus" size={16} />Nuova</button>
+          <button aria-current={tab === "shopping" ? "page" : undefined} className={tab === "shopping" ? "active" : ""} onClick={() => setTab("shopping")}><Icon name="bag" size={16} />Spesa {shoppingRemaining ? <b>{shoppingRemaining}</b> : null}</button>
+          <button aria-current={tab === "settings" ? "page" : undefined} className={tab === "settings" ? "active" : ""} onClick={() => setTab("settings")}><Icon name="settings" size={16} />Altro</button>
         </nav>
-        <span className="version-top">v6.2</span>
+        <span className="version-top">v6.3</span>
       </header>
 
       <main className="main-content">
         {notice ? <div className="app-notice" role="status"><span>{notice}</span><button aria-label="Chiudi messaggio" onClick={() => setNotice("")}><Icon name="close" size={16} /></button></div> : null}
         {tab === "recipes" ? <section className="page-section recipes-page">
-          <div className="recipes-hero"><div><span className="eyebrow">La tua cucina, ogni giorno</span><h1>{activeLabel}</h1><p>Ritrova un sapore. Scegli cosa cucinare.</p></div><button type="button" className="button primary desktop-new" onClick={() => setTab("new")}><Icon name="plus" size={18} /> Nuova ricetta</button></div>
+          <div className="collection-welcome">
+          <KitchenSprig />
+          <div className="recipes-hero"><div><span className="eyebrow">La tua cucina, ogni giorno</span><h1>{activeLabel}</h1><p>Le idee che ami, un ingrediente alla volta.</p></div><button type="button" className="button primary desktop-new" onClick={() => setTab("new")}><Icon name="plus" size={18} /> Nuova ricetta</button></div>
           <div className="collection-summary"><span><strong>{recipes.filter((r) => !r.archived).length}</strong> ricette</span><span><strong>{recipes.filter((r) => r.favorite && !r.archived).length}</strong> preferite</span><span><strong>{recipes.filter((r) => !r.archived && r.totalTimeMinutes != null && r.totalTimeMinutes <= 30).length}</strong> pronte in 30 min</span></div>
+          </div>
           <div className={offline ? "safety-ribbon offline" : "safety-ribbon"}><Icon name={offline ? "cloud" : "shield"} size={15} /><span>{safetyMessage || "Protezione dati attiva"}</span></div>
 
-          <div className="recipes-toolbar"><div className="search-wrap"><Icon name="search" size={19} className="search-icon" /><input aria-label="Cerca ricette" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Cerca titolo, ingrediente, procedimento o note…" />{query ? <button type="button" className="clear-search" aria-label="Cancella ricerca" onClick={() => setQuery("")}><Icon name="close" size={16} /></button> : null}</div><select aria-label="Ordina ricette" className="sort-select" value={sort} onChange={(e) => setSort(e.target.value as SortMode)}><option value="newest">Più recenti</option><option value="title">A–Z</option><option value="fastest">Più veloci</option><option value="lightest">Meno calorie</option></select></div>
+          <div className="recipes-toolbar"><div className="search-wrap"><Icon name="search" size={19} className="search-icon" /><input aria-label="Cerca ricette" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Cerca una ricetta o un ingrediente…" />{query ? <button type="button" className="clear-search" aria-label="Cancella ricerca" onClick={() => setQuery("")}><Icon name="close" size={16} /></button> : null}</div><select aria-label="Ordina ricette" className="sort-select" value={sort} onChange={(e) => setSort(e.target.value as SortMode)}><option value="newest">Più recenti</option><option value="title">A–Z</option><option value="fastest">Più veloci</option><option value="lightest">Meno calorie</option></select></div>
 
           <div className="category-scroll" aria-label="Cataloghi">
             <button type="button" className={category === "Tutte" ? "category-chip active" : "category-chip"} onClick={() => setCategory("Tutte")}>Tutte <span>{recipes.filter((r) => !r.archived).length}</span></button>

@@ -1,17 +1,19 @@
 {
   "name": "Ricettario AI",
-  "version": "6.1.0",
+  "version": "6.3.0",
   "channel": "stable",
-  "description": "Bozze recuperabili, inserimento manuale, ricerca migliorata, lista spesa con sincronizzazione verificata, dosi e timer corretti, controlli server e interfaccia accessibile.",
+  "description": "Interfaccia salvia chiara e scura, titoli completi sulle schede, testi lunghi contenuti, editor e impostazioni leggibili, navigazione comoda da telefono.",
   "managedRoots": [
     "app",
     "components",
     "lib",
     "public",
-    "types"
+    "types",
+    "database",
+    "tools"
   ],
   "delete": [
     "lib/update-auth.ts"
   ],
-  "notes": "Nessun aggiornamento cancella ricette. Il backup pre-update è obbligatorio; se fallisce l’update viene bloccato. I metadati nuovi sono salvati nel JSON nutrition esistente, quindi non servono modifiche SQL manuali."
+  "notes": "Richiede le migrazioni 001_backend_safety e 002_shopping_read della versione 6.2. Il miglioramento frontend 6.3 non aggiunge migrazioni. Il backup pre-update è obbligatorio."
 }

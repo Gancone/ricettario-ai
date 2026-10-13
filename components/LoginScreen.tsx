@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Icon } from "@/components/Icon";
+import { BrandLogo } from "@/components/BrandLogo";
 
 export function LoginScreen({ onAuthenticated }: { onAuthenticated: () => void }) {
   const [password, setPassword] = useState("");
@@ -27,7 +28,7 @@ export function LoginScreen({ onAuthenticated }: { onAuthenticated: () => void }
   return (
     <main className="login-page">
       <div className="login-card surface">
-        <div className="login-mark"><Icon name="book" size={28} /></div>
+        <div className="login-brand"><BrandLogo variant="full" /></div>
         <span className="eyebrow">Ricettario personale</span>
         <h1>Le tue ricette, solo per te.</h1>
         <p>Accedi una volta su questo dispositivo. La sessione resta memorizzata e protegge anche le API OpenAI e gli aggiornamenti.</p>

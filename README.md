@@ -72,3 +72,12 @@ Se l'updater web non fosse disponibile, estrai lo ZIP e fai doppio clic su `INST
 ## Dati
 
 La v6 non esegue `DROP`, `TRUNCATE` o cancellazioni della tabella `recipes`. Le nuove funzioni (preferiti, archivio, note dalla fonte) usano il JSON `nutrition` già esistente e non richiedono modifiche SQL manuali.
+
+
+## Logo ufficiale e collegamento Windows
+
+Il master originale è conservato in `public/branding/ricettario-ai-logo.png`. Login, header e caricamento usano varianti WebP ottimizzate; le icone PWA, Apple e favicon mostrano il solo simbolo. Dettagli e istruzioni: [docs/branding.md](docs/branding.md).
+
+Production verificata: https://ricettario-ai-kappa.vercel.app/
+
+Per ricreare le icone: `node tools/generate-branding-assets.cjs`. Su Windows: `powershell -NoProfile -ExecutionPolicy Bypass -File tools/create-windows-shortcut.ps1`. Il collegamento apre Production con il browser predefinito e usa una copia stabile di `RICETTARIO-AI.ico` nella cartella TOOLS, esterna al progetto. Gli aggiornamenti completi devono distribuire `public/`, `app/favicon.ico` e `tools/`.

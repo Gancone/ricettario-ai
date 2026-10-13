@@ -9,6 +9,7 @@ import { SettingsPanel } from "@/components/SettingsPanel";
 import { ShoppingList } from "@/components/ShoppingList";
 import { LoginScreen } from "@/components/LoginScreen";
 import { Icon } from "@/components/Icon";
+import { BrandLogo } from "@/components/BrandLogo";
 import { fallbackCategories } from "@/lib/categories";
 import { mergeRecipes, readLocalRecipeSafetyCopy, writeLocalRecipeSafetyCopy } from "@/lib/local-cache";
 import type { Category, Recipe } from "@/types/recipe";
@@ -162,13 +163,13 @@ export default function Home() {
   const activeLabel = category === "Tutte" ? "Le mie ricette" : category;
   const shoppingRemaining = shopping.filter((x) => !x.done).length;
 
-  if (!authChecked) return <div className="boot-screen"><span className="brand-mark"><Icon name="book" size={24} /></span><strong>Ricettario</strong></div>;
+  if (!authChecked) return <div className="boot-screen"><span className="brand-mark official-brand-mark"><BrandLogo decorative /></span><strong>Ricettario AI</strong></div>;
   if (!authenticated) return <LoginScreen onAuthenticated={() => setAuthenticated(true)} />;
 
   return (
     <div className="app-shell">
       <header className="topbar">
-        <button type="button" className="brand" onClick={() => { setTab("recipes"); setCategory("Tutte"); }}><span className="brand-mark"><Icon name="book" size={21} /></span><span><strong>Ricettario</strong><small>personale & protetto</small></span></button>
+        <button type="button" className="brand" onClick={() => { setTab("recipes"); setCategory("Tutte"); }}><span className="brand-mark official-brand-mark"><BrandLogo decorative /></span><span><strong>Ricettario AI</strong><small>personale & protetto</small></span></button>
         <nav className="desktop-nav" aria-label="Navigazione principale">
           <button className={tab === "recipes" ? "active" : ""} onClick={() => setTab("recipes")}><Icon name="book" size={16} />Ricette</button>
           <button className={tab === "new" ? "active" : ""} onClick={() => setTab("new")}><Icon name="plus" size={16} />Nuova</button>

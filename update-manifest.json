@@ -8,10 +8,11 @@
     "components",
     "lib",
     "public",
-    "types"
+    "types",
+    "tools"
   ],
   "delete": [
     "lib/update-auth.ts"
   ],
-  "notes": "Nessun aggiornamento cancella ricette. Il backup pre-update è obbligatorio; se fallisce l’update viene bloccato. I metadati nuovi sono salvati nel JSON nutrition esistente, quindi non servono modifiche SQL manuali."
+  "notes": "Nessun aggiornamento cancella ricette. Il backup pre-update è obbligatorio; se fallisce l’update viene bloccato. I metadati nuovi sono salvati nel JSON nutrition esistente, quindi non servono modifiche SQL manuali. I pacchetti completi includono public/branding, public/icons, app/favicon.ico e gli script in tools; la copia ICO del collegamento Windows vive fuori dalle cartelle sostituite dall’installer."
 }

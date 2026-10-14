@@ -22,7 +22,9 @@ if (-not (Test-Path -LiteralPath $officialIcon -PathType Leaf)) { throw "Icona u
 $toolsPath = [IO.Path]::GetFullPath($ToolsDirectory)
 [IO.Directory]::CreateDirectory($toolsPath) | Out-Null
 # Keep this stable copy outside the project folders replaced by normal installs.
-$stableIcon = Join-Path $toolsPath 'RICETTARIO-AI.ico'
+$iconDirectory = Join-Path $toolsPath 'LOGHI'
+[IO.Directory]::CreateDirectory($iconDirectory) | Out-Null
+$stableIcon = Join-Path $iconDirectory 'RICETTARIO-AI.ico'
 if ([IO.Path]::GetFullPath($officialIcon) -ne [IO.Path]::GetFullPath($stableIcon)) {
   Copy-Item -LiteralPath $officialIcon -Destination $stableIcon -Force
 }

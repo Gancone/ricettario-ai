@@ -80,4 +80,4 @@ Il master originale è conservato in `public/branding/ricettario-ai-logo.png`. L
 
 Production verificata: https://ricettario-ai-kappa.vercel.app/
 
-Per ricreare le icone: `node tools/generate-branding-assets.cjs`. Su Windows: `powershell -NoProfile -ExecutionPolicy Bypass -File tools/create-windows-shortcut.ps1`. Il collegamento apre Production con il browser predefinito e usa una copia stabile di `RICETTARIO-AI.ico` nella cartella TOOLS, esterna al progetto. Gli aggiornamenti completi devono distribuire `public/`, `app/favicon.ico` e `tools/`.
+Per ricreare le icone: `node tools/generate-branding-assets.cjs`. Su Windows: `powershell -NoProfile -ExecutionPolicy Bypass -File tools/create-windows-shortcut.ps1`. Il collegamento apre Production con il browser predefinito e usa una copia stabile di `RICETTARIO-AI.ico` nella cartella TOOLS\LOGHI, esterna al progetto. Gli aggiornamenti completi devono distribuire `public/`, `app/favicon.ico` e `tools/`.

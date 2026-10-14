@@ -35,7 +35,7 @@ Il percorso progetto viene ricavato dalla posizione dello script. L'URL viene le
 Sul PC corrente:
 
 - Collegamento: `C:\Users\Admin\Desktop\TOOLS\Ricettario AI.lnk`.
-- Icona stabile: `C:\Users\Admin\Desktop\TOOLS\RICETTARIO-AI.ico`.
+- Icona stabile: `C:\Users\Admin\Desktop\TOOLS\LOGHI\RICETTARIO-AI.ico`.
 - Target: `%WINDIR%\explorer.exe`, con l'URL Production come argomento.
 
 Explorer apre HTTPS usando il browser predefinito di Windows, senza legarsi a Chrome o Edge e senza avviare PowerShell, npm o un server locale. Verificato il doppio clic: si apre Chrome, attualmente predefinito, con la finestra del Ricettario; nessuna nuova finestra di terminale. Script eseguito due volte: un solo collegamento, aggiornato senza duplicati.

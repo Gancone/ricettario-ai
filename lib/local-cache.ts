@@ -1,4 +1,4 @@
-import {readOffline,writeOffline} from "./offline-db";
+import { readOffline, writeOffline } from "./offline-db";
 import type { Recipe } from "@/types/recipe";
 
 const PRIMARY_KEY = "ricettario-safe-v6";
@@ -7,28 +7,35 @@ const LEGACY_KEYS = [
   "ricettario-ai",
   "ricettario-ai-v4",
   "ricettario-recipes",
-  "recipes"
+  "recipes",
 ];
 
 function looksLikeRecipe(value: any): value is Recipe {
   return Boolean(
     value &&
-    typeof value === "object" &&
-    typeof value.id === "string" &&
-    typeof value.title === "string" &&
-    Array.isArray(value.ingredients) &&
-    Array.isArray(value.steps)
+      typeof value === "object" &&
+      typeof value.id === "string" &&
+      typeof value.title === "string" &&
+      Array.isArray(value.ingredients) &&
+      Array.isArray(value.steps),
   );
 }
 
 function extractRecipes(value: any): Recipe[] {
-  const list = Array.isArray(value) ? value : Array.isArray(value?.recipes) ? value.recipes : [];
+  const list = Array.isArray(value)
+    ? value
+    : Array.isArray(value?.recipes)
+      ? value.recipes
+      : [];
   return list.filter(looksLikeRecipe).map((recipe: Recipe) => ({
     ...recipe,
-    category: typeof recipe.category === "string" ? recipe.category : "Senza categoria",
-    tags: Array.isArray(recipe.tags) ? recipe.tags.filter((x) => typeof x === "string") : [],
+    category:
+      typeof recipe.category === "string" ? recipe.category : "Senza categoria",
+    tags: Array.isArray(recipe.tags)
+      ? recipe.tags.filter((x) => typeof x === "string")
+      : [],
     ingredients: recipe.ingredients.filter((x) => typeof x === "string"),
-    steps: recipe.steps.filter((x) => typeof x === "string")
+    steps: recipe.steps.filter((x) => typeof x === "string"),
   }));
 }
 
@@ -66,14 +73,35 @@ export function readLocalRecipeSafetyCopy(): Recipe[] {
     if (nextDate > currentDate) byId.set(recipe.id, recipe);
   }
 
-  return [...byId.values()].sort((a, b) => (Date.parse(b.createdAt || "") || 0) - (Date.parse(a.createdAt || "") || 0));
+  return [...byId.values()].sort(
+    (a, b) =>
+      (Date.parse(b.createdAt || "") || 0) -
+      (Date.parse(a.createdAt || "") || 0),
+  );
 }
 
-export function writeLocalRecipeSafetyCopy(recipes:Recipe[]){return writeOffline('recipes',recipes);}
-export async function readRecipeCache(){const cached=await readOffline<Recipe[]>('recipes').catch(()=>undefined);return mergeRecipes(cached||[],readLocalRecipeSafetyCopy());}
+let cacheWrite: Promise<void> = Promise.resolve();
+export function writeLocalRecipeSafetyCopy(recipes: Recipe[]) {
+  const next = cacheWrite
+    .catch(() => {})
+    .then(async () => {
+      const current = await readOffline<Recipe[]>("recipes");
+      await writeOffline("recipes", mergeRecipes(recipes, current || []));
+    });
+  cacheWrite = next;
+  return next;
+}
+export async function readRecipeCache() {
+  const cached = await readOffline<Recipe[]>("recipes").catch(() => undefined);
+  return mergeRecipes(cached || [], readLocalRecipeSafetyCopy());
+}
 export function mergeRecipes(primary: Recipe[], secondary: Recipe[]) {
   const byId = new Map<string, Recipe>();
   for (const recipe of secondary) byId.set(recipe.id, recipe);
   for (const recipe of primary) byId.set(recipe.id, recipe);
-  return [...byId.values()].sort((a, b) => (Date.parse(b.createdAt || "") || 0) - (Date.parse(a.createdAt || "") || 0));
+  return [...byId.values()].sort(
+    (a, b) =>
+      (Date.parse(b.createdAt || "") || 0) -
+      (Date.parse(a.createdAt || "") || 0),
+  );
 }

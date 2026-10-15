@@ -1,6 +1,6 @@
 {
   "name": "ricettario-ai",
-  "version": "6.2.0",
+  "version": "7.0.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -9,7 +9,8 @@
     "test": "node --import ./tests/register-loader.mjs --test tests/*.test.mjs",
     "typecheck": "tsc --noEmit",
     "test:browser": "playwright test",
-    "db:migrate": "node --import ./tools/register-loader.mjs --env-file-if-exists=.env.local tools/migrate.ts"
+    "db:migrate": "node --import ./tools/register-loader.mjs --env-file-if-exists=.env.local tools/migrate.ts",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.117.2",

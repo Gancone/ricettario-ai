@@ -6,7 +6,7 @@ import { errorResponse, HttpError, manifestSchema, readForm } from "@/lib/valida
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
-const MAX_ZIP_BYTES = 6 * 1024 * 1024;
+const MAX_ZIP_BYTES = 4 * 1024 * 1024;
 const MAX_FILES = 260;
 
 function cleanPath(value: string) { return value.replace(/\\/g, "/").replace(/^\.\//, "").replace(/^\/+/, ""); }
@@ -43,11 +43,11 @@ export async function POST(request: Request) {
     if (!token || !owner || !repo) throw new HttpError(503, "Aggiornamenti non configurati: mancano le variabili GitHub amministrative.");
 
     const backup = await createDatabaseSnapshot("pre-update");
-    if (!backup?.createdAt) throw new HttpError(503, "Backup pre-aggiornamento non verificato. Aggiornamento bloccato.");
+    if (!backup?.createdAt || !backup.verified || backup.suspicious) throw new HttpError(503, "Backup pre-aggiornamento non verificato. Aggiornamento bloccato.");
     const form = await readForm(request, MAX_ZIP_BYTES + 256 * 1024);
     const file = form.get("file") as File | null;
     if (!file || file.size === 0) throw new HttpError(400, "Seleziona il file ZIP dell'aggiornamento.");
-    if (file.size > MAX_ZIP_BYTES) throw new HttpError(413, "ZIP troppo grande. Massimo 6 MB.");
+    if (file.size > MAX_ZIP_BYTES) throw new HttpError(413, "ZIP troppo grande. Massimo 4 MB; per pacchetti più grandi usa il repository Git.");
 
     const zip = new AdmZip(Buffer.from(await file.arrayBuffer()));
     const entries = zip.getEntries().filter((e) => !e.isDirectory);

@@ -1,80 +1,69 @@
 "use client";
-
-import { useEffect, useState } from "react";
 import type { Recipe } from "@/types/recipe";
-import { displayImageUrl } from "@/lib/image-client";
-import { Icon } from "@/components/Icon";
-
+import { RecipeImage } from "./RecipeImage";
+import { Icon } from "./Icon";
 export function RecipeCard({
   recipe,
   onOpen,
-  onImageUpdated,
-  onToggleFavorite
+  onToggleFavorite,
+  view = "grid",
 }: {
   recipe: Recipe;
   onOpen: () => void;
-  onImageUpdated?: (imageUrl: string) => void;
   onToggleFavorite: () => void;
+  view?: string;
 }) {
-  const [imageUrl, setImageUrl] = useState(recipe.imageUrl || "");
-  const [repairing, setRepairing] = useState(false);
-  const [attempted, setAttempted] = useState(false);
-
-  useEffect(() => {
-    setImageUrl(recipe.imageUrl || "");
-    setAttempted(false);
-  }, [recipe.imageUrl, recipe.id]);
-
-  async function repairImage() {
-    if (repairing || attempted || !recipe.sourceUrl) return;
-    setAttempted(true);
-    setRepairing(true);
-    try {
-      const response = await fetch(`/api/recipes/${recipe.id}/image`, { method: "POST" });
-      const data = await response.json();
-      if (response.ok && data.imageUrl) {
-        setImageUrl(data.imageUrl);
-        onImageUpdated?.(data.imageUrl);
-      }
-    } catch {}
-    finally { setRepairing(false); }
-  }
-
-  function imageFailed() { setImageUrl(""); }
-
   return (
-    <article className={recipe.archived ? "recipe-card-shell archived" : "recipe-card-shell"}>
-      <button className="recipe-card" onClick={onOpen} type="button" aria-label={`Apri ${recipe.title}`}>
+    <article
+      className={"recipe-card-shell" + (recipe.archived ? " archived" : "")}
+    >
+      <button
+        className="recipe-card"
+        onClick={onOpen}
+        type="button"
+        aria-label={"Apri " + recipe.title}
+      >
         <div className="recipe-card-image-wrap">
-          {imageUrl ? (
-            <img className="recipe-card-image" src={displayImageUrl(imageUrl)} alt="" loading="lazy" decoding="async" onError={imageFailed} />
+          {recipe.imageUrl ? (
+            <RecipeImage url={recipe.imageUrl} className="recipe-card-image" />
           ) : (
             <div className="recipe-card-placeholder">
-              <div className="placeholder-monogram">{recipe.title.trim().slice(0, 1).toUpperCase() || "R"}</div>
-              <small>{repairing ? "Recupero foto…" : "Foto non disponibile"}</small>
+              <span className="placeholder-monogram">
+                {recipe.title.trim().slice(0, 1).toUpperCase() || "R"}
+              </span>
             </div>
           )}
           <div className="recipe-card-gradient" />
-          <span className="recipe-card-category">{recipe.archived ? "Archiviata" : recipe.category}</span>
           <div className="recipe-card-copy">
-            <h3>{recipe.title}</h3>
+            <h3 title={recipe.title}>{recipe.title}</h3>
             <div className="recipe-card-meta">
-              {recipe.totalTimeMinutes ? <span><Icon name="clock" size={13} />{recipe.totalTimeMinutes} min</span> : null}
-              {recipe.nutrition?.calories !== undefined ? <span><Icon name="flame" size={13} />{recipe.nutrition.calories} kcal</span> : null}
+              {view !== "grid" && (
+                <span>{recipe.archived ? "Archiviata" : recipe.category}</span>
+              )}
+              {recipe.totalTimeMinutes != null && (
+                <span>
+                  <Icon name="clock" size={13} />
+                  {recipe.totalTimeMinutes} min
+                </span>
+              )}
+              {view !== "grid" && recipe.nutrition?.calories != null && (
+                <span>{recipe.nutrition.calories} kcal</span>
+              )}
             </div>
           </div>
         </div>
       </button>
       <button
-        className={recipe.favorite ? "favorite-card-button active" : "favorite-card-button"}
+        className={"favorite-card-button" + (recipe.favorite ? " active" : "")}
         type="button"
-        aria-label={recipe.favorite ? "Rimuovi dai preferiti" : "Aggiungi ai preferiti"}
+        aria-label={
+          recipe.favorite ? "Rimuovi dai preferiti" : "Aggiungi ai preferiti"
+        }
         aria-pressed={!!recipe.favorite}
-        onClick={(e) => { e.stopPropagation(); onToggleFavorite(); }}
-      ><Icon name="heart" size={17} /></button>
-      {!imageUrl && recipe.sourceUrl && !repairing ? (
-        <button className="repair-image-button" type="button" onClick={repairImage}><Icon name="image" size={14} /> Recupera foto</button>
-      ) : null}
+        onClick={onToggleFavorite}
+      >
+        <Icon name="heart" size={18} />
+      </button>
     </article>
   );
 }

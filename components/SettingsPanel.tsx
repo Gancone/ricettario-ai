@@ -1,206 +1,485 @@
 "use client";
-
 import { useEffect, useRef, useState } from "react";
 import type { Category, Recipe } from "@/types/recipe";
-import { Icon } from "@/components/Icon";
 import { api, jsonBody } from "@/lib/api-client";
-
+import { ThemeControl } from "./ThemeControl";
+import {
+  mergeRecipes,
+  readRecipeCache,
+  writeLocalRecipeSafetyCopy,
+} from "@/lib/local-cache";
+import { readOffline, writeOffline } from "@/lib/offline-db";
+import { displayImageUrl } from "@/lib/image-client";
+import { variantImageUrl } from "@/lib/image-url";
+type Check = { ok: boolean; label: string };
 export function SettingsPanel({
   categories,
   setCategories,
   recipes,
   onLogout,
-  onImagesRepaired
+  onImagesRepaired,
 }: {
   categories: Category[];
-  setCategories: (categories: Category[]) => void;
+  setCategories: (rows: Category[]) => void;
   recipes: Recipe[];
   onLogout: () => void;
-  onImagesRepaired: (updates: Array<{ id: string; imageUrl: string }>) => void;
+  onImagesRepaired: (rows: { id: string; imageUrl: string }[]) => void;
 }) {
-  const [newCategory, setNewCategory] = useState("");
-  const [updateFile, setUpdateFile] = useState<File | null>(null);
-  const [updateStatus, setUpdateStatus] = useState("");
-  const [updating, setUpdating] = useState(false);
-  const [currentVersion, setCurrentVersion] = useState("6.0.0");
-  const [backup, setBackup] = useState<{ recipes: number; latestBackupAt: string; latestBackupRecipes: number; protected: boolean } | null>(null);
-  const [backupBusy, setBackupBusy] = useState(false);
-  const [backupMessage, setBackupMessage] = useState("");
-  const [system, setSystem] = useState<Record<string, { ok: boolean; label: string }> | null>(null);
-  const [repairing, setRepairing] = useState(false);
-  const [repairMessage, setRepairMessage] = useState("");
-  const [settingsError, setSettingsError] = useState("");
-  const [categoryBusy, setCategoryBusy] = useState(false);
-  const updateTimer = useRef<number | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
-
-  async function refreshBackupStatus() {
+  const [message, setMessage] = useState(""),
+    [busy, setBusy] = useState(false),
+    [newCategory, setNewCategory] = useState(""),
+    [version, setVersion] = useState("7.0.0"),
+    [system, setSystem] = useState<Record<string, Check> | null>(null),
+    [backup, setBackup] = useState<{
+      recipes: number;
+      latestBackupAt: string;
+      latestBackupRecipes: number;
+      protected: boolean;
+    } | null>(null),
+    [updateFile, setUpdateFile] = useState<File | null>(null),
+    [result, setResult] = useState<{
+      branch: string;
+      commit: string;
+      version: string;
+    } | null>(null);
+  const lock = useRef(false),
+    backupInput = useRef<HTMLInputElement>(null);
+  async function refresh() {
     try {
-      const r = await fetch("/api/backup/status", { cache: "no-store" });
-      const d = await r.json();
-      if (r.ok) setBackup(d);
+      const data = await api<typeof backup>("/api/backup/status");
+      setBackup(data);
     } catch {}
   }
-
-  async function refreshSystem() {
-    try {
-      setSettingsError("");
-      setSystem(await api<Record<string, { ok: boolean; label: string }>>("/api/system/status"));
-    } catch (error) { setSettingsError(error instanceof Error ? error.message : "Controllo del sistema non riuscito."); }
-  }
-
   useEffect(() => {
-    fetch("/api/version", { cache: "no-store" }).then((r) => r.json()).then((d) => d.version && setCurrentVersion(d.version)).catch(() => {});
-    refreshBackupStatus();
-    refreshSystem();
-    return () => { if (updateTimer.current) window.clearInterval(updateTimer.current); };
+    void refresh();
+    void api<{ version: string }>("/api/version")
+      .then((data) => setVersion(data.version))
+      .catch(() => {});
   }, []);
-
+  async function run(action: () => Promise<void>) {
+    if (lock.current) return;
+    lock.current = true;
+    setBusy(true);
+    setMessage("");
+    try {
+      await action();
+    } catch (error) {
+      setMessage(
+        error instanceof Error ? error.message : "Operazione non completata.",
+      );
+    } finally {
+      lock.current = false;
+      setBusy(false);
+    }
+  }
+  async function snapshot() {
+    const data = await api<{ recipes: number }>(
+      "/api/backup/snapshot",
+      { method: "POST" },
+      180000,
+    );
+    setMessage(`Backup verificato · ${data.recipes} ricette.`);
+    await refresh();
+  }
+  async function importFile(file: File) {
+    if (
+      !confirm(
+        "Importare il backup aggiungendo solo i record mancanti? Prima verrà creata una copia di sicurezza. I record esistenti saranno conservati.",
+      )
+    )
+      return;
+    await run(async () => {
+      if (file.size > 50 * 1024 * 1024)
+        throw new Error("Il backup supera il limite di 50 MB.");
+      setMessage("Carico e verifico il backup…");
+      let init: RequestInit;
+      if (file.size > 3 * 1024 * 1024) {
+        const upload = await api<{ path: string; signedUrl: string }>(
+          "/api/backup/upload",
+          { method: "POST" },
+        );
+        const response = await fetch(upload.signedUrl, {
+          method: "PUT",
+          headers: { "content-type": "application/zip", "x-upsert": "false" },
+          body: file,
+        });
+        if (!response.ok)
+          throw new Error("Caricamento del backup non completato. Riprova.");
+        init = jsonBody({ uploadPath: upload.path });
+      } else {
+        const form = new FormData();
+        form.append("file", file);
+        init = { body: form };
+      }
+      const report = await api<{
+        inserted: number;
+        skippedExisting: number;
+        conflicts: unknown[];
+        errors: unknown[];
+      }>("/api/backup/import", { method: "POST", ...init }, 300000);
+      setMessage(
+        `Importazione: ${report.inserted} nuovi record, ${report.skippedExisting} già presenti conservati, ${report.conflicts.length} conflitti, ${report.errors.length} righe da controllare. Ricarica il ricettario per vedere le aggiunte.`,
+      );
+      await writeOffline("last-import-report", report);
+      await refresh();
+    });
+  }
+  async function prepareOffline() {
+    setMessage("Preparo le ricette per la consultazione offline…");
+    let cursor: string | null = null;
+    let all = await readRecipeCache();
+    let count = 0;
+    do {
+      const response: { items: Recipe[]; nextCursor: string | null } =
+        await api<{ items: Recipe[]; nextCursor: string | null }>(
+          "/api/recipes?limit=100" + (cursor ? "&cursor=" + cursor : ""),
+        );
+      all = mergeRecipes(response.items, all);
+      count += response.items.length;
+      await writeLocalRecipeSafetyCopy(all);
+      for (const recipe of response.items) {
+        if (!recipe.imageUrl) continue;
+        const url = displayImageUrl(variantImageUrl(recipe.imageUrl, "thumb"));
+        try {
+          const response = await fetch(url);
+          if (response.ok) {
+            const blob = await response.blob();
+            if (blob.size < 400000) await writeOffline("image:" + url, blob);
+          }
+        } catch {}
+      }
+      if (response.nextCursor === cursor && cursor)
+        throw new Error("Paginazione non valida: copia precedente conservata.");
+      cursor = response.nextCursor;
+    } while (cursor);
+    setMessage(
+      `${count} ricette preparate sul dispositivo. Le miniature disponibili sono state conservate. Il browser può rimuovere i dati locali: conserva anche un backup ZIP.`,
+    );
+  }
   async function addCategory() {
     const name = newCategory.trim();
-    if (!name || categoryBusy) return;
-    setCategoryBusy(true); setSettingsError("");
-    try {
-      const data = await api<Category>("/api/categories", { method: "POST", ...jsonBody({ name }) });
-      setCategories([...categories.filter((x) => x.id !== data.id), data].sort((a, b) => a.name.localeCompare(b.name, "it")));
-      setNewCategory(""); refreshBackupStatus();
-    } catch (error) { setSettingsError(error instanceof Error ? error.message : "Catalogo non creato."); }
-    finally { setCategoryBusy(false); }
+    if (!name) return;
+    const row = await api<Category>("/api/categories", {
+      method: "POST",
+      ...jsonBody({ name }),
+    });
+    setCategories([...categories.filter((item) => item.id !== row.id), row]);
+    setNewCategory("");
+    setMessage("Catalogo aggiunto.");
   }
-
-  async function removeCategory(category: Category) {
-    if (category.id < 0) return alert("Questo è un catalogo base e non viene eliminato.");
-    if (recipes.some((r) => r.category === category.name && !r.archived)) return alert("Prima sposta le ricette di questo catalogo in un'altra categoria.");
-    if (!confirm(`Eliminare solo il catalogo “${category.name}”? Le ricette non verranno toccate.`)) return;
-    const response = await fetch(`/api/categories/${category.id}`, { method: "DELETE" });
-    if (!response.ok) return alert("Non riesco a eliminare il catalogo.");
-    setCategories(categories.filter((c) => c.id !== category.id));
-    refreshBackupStatus();
+  async function removeCategory(row: Category) {
+    if (row.id < 0) return;
+    if (
+      !confirm(
+        `Rimuovere il catalogo “${row.name}”? Le ricette vengono conservate.`,
+      )
+    )
+      return;
+    await api("/api/categories/" + row.id, { method: "DELETE" });
+    setCategories(categories.filter((item) => item.id !== row.id));
+    setMessage("Catalogo rimosso.");
   }
-
-  async function createBackup() {
-    setBackupBusy(true); setBackupMessage("Creo una copia di sicurezza…");
-    try {
-      const r = await fetch("/api/backup/snapshot", { method: "POST" });
-      const d = await r.json();
-      if (!r.ok) throw new Error(d.error || "Backup non riuscito");
-      setBackupMessage(`Backup creato · ${d.recipes} ricette protette.`);
-      await refreshBackupStatus(); await refreshSystem();
-    } catch (error: any) { setBackupMessage(error?.message || "Backup non riuscito"); }
-    finally { setBackupBusy(false); }
-  }
-
-  async function restoreBackup() {
-    if (!confirm("Ripristinare l'ultimo backup? Il ripristino è additivo: non elimina nulla.")) return;
-    setBackupBusy(true); setBackupMessage("Ripristino l’ultimo backup…");
-    try {
-      const r = await fetch("/api/backup/restore", { method: "POST" });
-      const d = await r.json();
-      if (!r.ok) throw new Error(d.error || "Ripristino non riuscito");
-      setBackupMessage(d.restored ? `Ripristinate ${d.recipes} ricette. Ricarico…` : "Non c'è ancora un backup da ripristinare.");
-      if (d.restored) window.setTimeout(() => window.location.reload(), 900);
-    } catch (error: any) { setBackupMessage(error?.message || "Ripristino non riuscito"); }
-    finally { setBackupBusy(false); }
-  }
-
-  async function repairImages() {
-    setRepairing(true); setRepairMessage("Cerco fino a 8 copertine mancanti…");
-    try {
-      const r = await fetch("/api/recipes/images/repair", { method: "POST" });
-      const d = await r.json();
-      if (!r.ok) throw new Error(d.error || "Riparazione non riuscita");
-      onImagesRepaired(d.updated || []);
-      setRepairMessage(`${d.updated?.length || 0} copertine riparate${d.remaining ? ` · ${d.remaining} ancora da verificare` : ""}.`);
-    } catch (error: any) { setRepairMessage(error?.message || "Riparazione non riuscita"); }
-    finally { setRepairing(false); }
-  }
-
   async function installUpdate() {
-    if (!updateFile) return setUpdateStatus("Scegli il file ZIP dell'aggiornamento.");
-    setUpdating(true);
-    setUpdateStatus("Verifico il backup e invio la nuova versione…");
-    try {
-      const form = new FormData(); form.append("file", updateFile);
-      const response = await fetch("/api/admin/update", { method: "POST", body: form });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Aggiornamento non riuscito");
-      setUpdateStatus(`Backup verificato. Vercel sta installando la versione ${data.version}…`);
-      setUpdateFile(null); if (fileRef.current) fileRef.current.value = "";
-      if (data.version && data.version !== currentVersion) {
-        const started = Date.now();
-        const timer = window.setInterval(async () => {
-          if (Date.now() - started > 5 * 60 * 1000) {
-            window.clearInterval(timer);
-            setUpdateStatus("Deploy ancora in corso. Riapri l'app tra poco: il backup pre-aggiornamento è già al sicuro.");
-            return;
-          }
-          try {
-            const versionResponse = await fetch(`/api/version?t=${Date.now()}`, { cache: "no-store" });
-            const versionData = await versionResponse.json();
-            if (versionData.version === data.version) {
-              window.clearInterval(timer);
-              setUpdateStatus(`Versione ${data.version} installata. Ricarico…`);
-              window.setTimeout(() => window.location.reload(), 1000);
-            }
-          } catch {}
-        }, 9000);
-        updateTimer.current = timer;
-      }
-    } catch (error: any) { setUpdateStatus(error?.message || "Aggiornamento non riuscito."); }
-    finally { setUpdating(false); }
+    if (!updateFile) return;
+    const form = new FormData();
+    form.append("file", updateFile);
+    const data = await api<{ branch: string; commit: string; version: string }>(
+      "/api/admin/update",
+      { method: "POST", body: form },
+      300000,
+    );
+    setResult(data);
+    setUpdateFile(null);
+    setMessage(
+      "Pacchetto verificato e preparato su un ramo di anteprima. Apri il relativo deployment Preview e verifica le funzioni prima del rilascio.",
+    );
   }
-
-  async function logout() {
-    try { await api("/api/auth/logout", { method: "POST" }); onLogout(); }
-    catch { setSettingsError("Non riesco a chiudere la sessione sul server. Controlla la connessione e riprova."); }
-  }
-
-  const backupDate = backup?.latestBackupAt ? new Date(backup.latestBackupAt).toLocaleString("it-IT") : "non ancora creato";
-
   return (
-    <section className="page-section settings-page">
-      <div className="section-heading compact-heading"><span className="eyebrow">Impostazioni</span><h2>Controllo totale.</h2><p>Backup, cataloghi, salute del sistema e aggiornamenti. Nessun codice da toccare.</p></div>
-
-      {settingsError ? <div className="warning-banner" role="alert">{settingsError}</div> : null}
+    <section className="settings-page">
+      <div className="section-heading">
+        <div>
+          <span className="eyebrow">Come piace a te</span>
+          <h2>Impostazioni</h2>
+        </div>
+        <span className="version-pill">v{version}</span>
+      </div>
+      {message && (
+        <div className="status-line" role="status">
+          {message}
+        </div>
+      )}
       <div className="settings-grid">
-        <div className="surface settings-card protection-card">
-          <div className="settings-title"><div><span className="settings-icon"><Icon name="shield" size={20} /></span><h3>Protezione ricette</h3><p>Le ricette vivono su Supabase, hanno una copia locale e snapshot automatici. Gli aggiornamenti non modificano il database.</p></div><span className="status-pill good">Fortress</span></div>
-          <div className="protection-stats"><div><strong>{backup?.recipes ?? recipes.length}</strong><span>ricette su Supabase</span></div><div><strong>{backup?.latestBackupRecipes ?? "–"}</strong><span>nell’ultimo backup</span></div></div>
-          <div className="backup-last"><Icon name="cloud" size={16} /><span>Ultimo backup: <b>{backupDate}</b></span></div>
-          <div className="button-row"><button className="button primary" disabled={backupBusy} type="button" onClick={createBackup}><Icon name="shield" size={16} /> Backup ora</button><a className="button soft" href="/api/backup/export"><Icon name="download" size={16} /> Scarica JSON</a><button className="button soft" disabled={backupBusy} type="button" onClick={restoreBackup}><Icon name="refresh" size={16} /> Ripristina</button></div>
-          {backupMessage ? <div className="status-line">{backupMessage}</div> : null}
-        </div>
-
-        <div className="surface settings-card system-card">
-          <div className="settings-title"><div><span className="settings-icon"><Icon name="database" size={20} /></span><h3>Stato del sistema</h3><p>Un controllo rapido senza consumare credito OpenAI.</p></div><button className="button soft tiny-button" onClick={refreshSystem} type="button"><Icon name="refresh" size={14} />Controlla</button></div>
-          <div className="system-grid">
-            {system ? (Object.entries(system) as Array<[string, { ok: boolean; label: string }]>).map(([key, item]) => <div className={item.ok ? "system-row ok" : "system-row bad"} key={key}><span className="system-dot"/><div><strong>{key === "auth" ? "Accesso" : key === "openai" ? "OpenAI" : key === "updates" ? "Aggiornamenti" : key === "supabase" ? "Supabase" : key === "backup" ? "Backup" : "Immagini"}</strong><small>{item.label}</small></div></div>) : <div className="muted-line">Controllo in corso…</div>}
+        <section className="surface settings-card">
+          <h3>Aspetto</h3>
+          <p>Una luce morbida, di giorno e di sera.</p>
+          <ThemeControl />
+          <p className="muted-line">
+            La visualizzazione Griglia, Lista o Compatta si sceglie nel
+            ricettario e resta su questo dispositivo.
+          </p>
+        </section>
+        <section className="surface settings-card">
+          <h3>Backup</h3>
+          <p>
+            La copia completa comprende dati e fotografie. L’importazione
+            aggiunge solo ciò che manca.
+          </p>
+          <p>
+            Ultimo backup:{" "}
+            <strong>
+              {backup?.latestBackupAt
+                ? new Date(backup.latestBackupAt).toLocaleString("it-IT")
+                : "da verificare"}
+            </strong>
+            {backup ? ` · ${backup.latestBackupRecipes} ricette` : ""}
+          </p>
+          <div className="button-row">
+            <button
+              className="button primary"
+              disabled={busy}
+              onClick={() => void run(snapshot)}
+            >
+              Backup ora
+            </button>
+            <a className="button soft" href="/api/backup/export?format=zip">
+              Scarica backup completo
+            </a>
+            <button
+              className="button soft"
+              disabled={busy}
+              onClick={() => backupInput.current?.click()}
+            >
+              Importa backup
+            </button>
+            <input
+              ref={backupInput}
+              aria-label="File backup da importare"
+              type="file"
+              accept=".zip,application/zip"
+              hidden
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) void importFile(file);
+                e.target.value = "";
+              }}
+            />
           </div>
-        </div>
-
-        <div className="surface settings-card">
-          <div className="settings-title"><div><span className="settings-icon"><Icon name="tag" size={20} /></span><h3>Cataloghi</h3><p>I cataloghi base vengono sempre ricreati se mancanti.</p></div><span className="count-pill">{categories.length}</span></div>
-          <div className="category-manager">{categories.map((c) => <div className="category-manager-row" key={`${c.id}-${c.name}`}><span>{c.name}</span><small>{recipes.filter((r) => r.category === c.name && !r.archived).length}</small><button type="button" className="tiny-danger" onClick={() => removeCategory(c)}>{c.id < 0 ? "Base" : "Rimuovi"}</button></div>)}</div>
-          <div className="inline-add"><input value={newCategory} onChange={(e) => setNewCategory(e.target.value)} placeholder="Nuovo catalogo…" onKeyDown={(e) => e.key === "Enter" && addCategory()} /><button className="button primary" type="button" onClick={addCategory}><Icon name="plus" size={16} />Aggiungi</button></div>
-        </div>
-
-        <div className="surface settings-card">
-          <div className="settings-title"><div><span className="settings-icon"><Icon name="image" size={20} /></span><h3>Copertine</h3><p>Il recupero massivo non parte più a ogni apertura. Lo avvii tu solo quando serve.</p></div></div>
-          <button className="button soft full" disabled={repairing} type="button" onClick={repairImages}><Icon name="image" size={16} />{repairing ? "Recupero…" : "Ripara copertine mancanti"}</button>
-          {repairMessage ? <div className="status-line">{repairMessage}</div> : null}
-        </div>
-
-        <div className="surface settings-card update-card">
-          <div className="settings-title"><div><span className="settings-icon"><Icon name="refresh" size={20} /></span><h3>Aggiornamenti ZIP</h3><p>Non c'è più una seconda password: se hai effettuato l'accesso al Ricettario, puoi aggiornare. Se il backup pre-update fallisce, l'aggiornamento viene bloccato.</p></div><span className="version-pill">v{currentVersion}</span></div>
-          <label className={updateFile ? "update-drop has-file" : "update-drop"}><Icon name="download" size={28} /><strong>{updateFile?.name || "Trascina o scegli lo ZIP"}</strong><span>Il pacchetto aggiorna solo il codice. Le ricette restano su Supabase.</span><input ref={fileRef} type="file" accept=".zip,application/zip" onChange={(e) => setUpdateFile(e.target.files?.[0] || null)} /></label>
-          <button className="button primary full" type="button" disabled={!updateFile || updating} onClick={installUpdate}><Icon name="refresh" size={16} />{updating ? "Aggiorno…" : "Installa aggiornamento"}</button>
-          {updateStatus ? <div className="status-line">{updateStatus}</div> : null}
-        </div>
-
-        <div className="surface settings-card account-card">
-          <div className="settings-title"><div><span className="settings-icon"><Icon name="lock" size={20} /></span><h3>Accesso personale</h3><p>La stessa sessione protegge ricette, OpenAI e aggiornamenti. Resta memorizzata sul dispositivo.</p></div></div>
-          <button className="button soft" type="button" onClick={logout}><Icon name="logout" size={16} /> Esci da questo dispositivo</button>
-        </div>
+          <details>
+            <summary>Altre opzioni di recupero</summary>
+            <div className="button-row">
+              <a className="button soft" href="/api/backup/export">
+                Scarica dati JSON
+              </a>
+              <button
+                className="button soft"
+                disabled={busy}
+                onClick={() => {
+                  if (
+                    confirm(
+                      "Ripristinare i record mancanti dall’ultimo backup verificato? I record attuali saranno conservati.",
+                    )
+                  )
+                    void run(async () => {
+                      const data = await api<{
+                        restored: boolean;
+                        recipes: number;
+                      }>("/api/backup/restore", { method: "POST" }, 300000);
+                      setMessage(
+                        data.restored
+                          ? `Recupero completato: ${data.recipes} ricette. Ricarica il ricettario.`
+                          : "Nessun backup disponibile.",
+                      );
+                    });
+                }}
+              >
+                Recupera ultimo backup
+              </button>
+            </div>
+          </details>
+        </section>
+        <section className="surface settings-card">
+          <h3>Dati</h3>
+          <button
+            className="button soft"
+            disabled={busy}
+            onClick={() => void run(prepareOffline)}
+          >
+            Prepara consultazione offline
+          </button>
+          <p>
+            La copia locale serve a consultare le ricette. I salvataggi delle
+            ricette richiedono la connessione.
+          </p>
+          <h4>Cataloghi</h4>
+          <div className="category-manager">
+            {categories.map((row) => (
+              <div className="category-manager-row" key={row.id}>
+                <span>{row.name}</span>
+                {row.id >= 0 && (
+                  <button
+                    className="button soft"
+                    disabled={busy}
+                    aria-label={"Rimuovi catalogo " + row.name}
+                    onClick={() => void run(() => removeCategory(row))}
+                  >
+                    Rimuovi
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+          <form
+            className="inline-add"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void run(addCategory);
+            }}
+          >
+            <input
+              aria-label="Nuovo catalogo"
+              value={newCategory}
+              maxLength={120}
+              onChange={(e) => setNewCategory(e.target.value)}
+              placeholder="Nuovo catalogo…"
+            />
+            <button
+              className="button primary"
+              disabled={busy || !newCategory.trim()}
+            >
+              Aggiungi
+            </button>
+          </form>
+          <details>
+            <summary>Copertine mancanti</summary>
+            <button
+              className="button soft"
+              disabled={busy}
+              onClick={() =>
+                void run(async () => {
+                  const data = await api<{
+                    updated: { id: string; imageUrl: string }[];
+                    remaining: number;
+                  }>("/api/recipes/images/repair", { method: "POST" }, 180000);
+                  onImagesRepaired(data.updated);
+                  setMessage(
+                    `${data.updated.length} copertine recuperate · ${data.remaining || 0} da controllare.`,
+                  );
+                })
+              }
+            >
+              Recupera fino a 8 copertine
+            </button>
+          </details>
+        </section>
+        <section className="surface settings-card">
+          <h3>Account</h3>
+          <p>
+            Il tuo ricettario è personale. La sessione è protetta sul server.
+          </p>
+          <button
+            className="button soft"
+            disabled={busy}
+            onClick={() =>
+              void run(async () => {
+                await api("/api/auth/logout", { method: "POST" });
+                onLogout();
+              })
+            }
+          >
+            Esci da questo dispositivo
+          </button>
+        </section>
+        <section className="surface settings-card">
+          <h3>Aggiornamenti</h3>
+          <p>
+            Il pacchetto ZIP crea un ramo di anteprima dopo il backup. Il
+            rilascio della versione online richiede una verifica separata.
+          </p>
+          <label className="field">
+            Pacchetto aggiornamento
+            <input
+              type="file"
+              aria-label="Pacchetto aggiornamento"
+              accept=".zip,application/zip"
+              disabled={busy}
+              onChange={(e) => setUpdateFile(e.target.files?.[0] || null)}
+            />
+          </label>
+          <button
+            className="button primary"
+            disabled={busy || !updateFile}
+            onClick={() => void run(installUpdate)}
+          >
+            Prepara anteprima
+          </button>
+          {result && (
+            <div className="update-result">
+              <p>Versione {result.version}</p>
+              <p>
+                Ramo: <code>{result.branch}</code>
+              </p>
+              <p>
+                Commit: <code>{result.commit}</code>
+              </p>
+            </div>
+          )}
+        </section>
+        <details className="surface settings-card advanced-settings">
+          <summary>Avanzate / Diagnostica</summary>
+          <p>Controlli tecnici senza chiamate OpenAI.</p>
+          <button
+            className="button soft"
+            disabled={busy}
+            onClick={() =>
+              void run(async () => {
+                setSystem(
+                  await api<Record<string, Check>>("/api/system/status"),
+                );
+                setMessage("Controllo completato.");
+              })
+            }
+          >
+            Controlla sistema
+          </button>
+          {system && (
+            <div className="system-grid">
+              {Object.entries(system).map(([name, item]) => (
+                <div
+                  className={"system-row " + (item.ok ? "ok" : "bad")}
+                  key={name}
+                >
+                  <span className="system-dot" />
+                  <div>
+                    <strong>{name}</strong>
+                    <small>{item.label}</small>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="button-row">
+            <a
+              className="button soft"
+              href="/api/health"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Health
+            </a>
+            <a
+              className="button soft"
+              href="/api/admin/migrations"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Migrazioni database
+            </a>
+          </div>
+          <p>
+            {recipes.length} ricette caricate su questa pagina. La versione del
+            database viene verificata dal server.
+          </p>
+        </details>
       </div>
     </section>
   );

@@ -12,7 +12,7 @@ const MAX_FILES = 260;
 function cleanPath(value: string) { return value.replace(/\\/g, "/").replace(/^\.\//, "").replace(/^\/+/, ""); }
 function forbiddenPath(p: string) {
   const parts = p.split("/");
-  return !p || p.includes("../") || p.startsWith("../") || parts.includes(".git") || parts.includes("node_modules") || parts.includes(".next") || p === ".env" || p.startsWith(".env.") || p.startsWith(".vercel");
+  return !p || p.includes('\0') || parts.some(part=>part==='.'||part==='..'||(part.startsWith('.env')&&p!=='.env.example')) || parts.includes(".git") || parts.includes("node_modules") || parts.includes(".next") || p.startsWith(".vercel");
 }
 function stripSingleRoot(paths: string[]) {
   const roots = new Set(paths.filter(Boolean).map((p) => p.split("/")[0]));
@@ -60,13 +60,15 @@ export async function POST(request: Request) {
       let p = cleanPath(entry.entryName); if (rootPrefix && p.startsWith(rootPrefix)) p = p.slice(rootPrefix.length);
       return { path: p, data: entry.getData() };
     });
-    if (files.some((f) => forbiddenPath(f.path) || protectedPath(f.path) && f.path.startsWith(".env"))) throw new HttpError(400, "Il pacchetto contiene file protetti.");
+    if (files.some((f) => forbiddenPath(f.path))) throw new HttpError(400, "Il pacchetto contiene file protetti.");
     if (!files.some((f) => f.path === "package.json") || !files.some((f) => f.path === "package-lock.json") || !files.some((f) => f.path === "app/page.tsx")) throw new HttpError(400, "ZIP non riconosciuto: servono package.json, package-lock.json e app/page.tsx.");
 
     const manifestFile = files.find((f) => f.path === "update-manifest.json");
     if (!manifestFile) throw new HttpError(400, "Manifest aggiornamento mancante.");
     const manifest = manifestSchema.parse(JSON.parse(manifestFile.data.toString("utf8")));
     const lock = JSON.parse(files.find((f) => f.path === "package-lock.json")!.data.toString("utf8"));
+    const packageMeta=JSON.parse(files.find(f=>f.path==='package.json')!.data.toString('utf8'));
+    if(packageMeta.version!==manifest.version||lock.packages?.['']?.version!==manifest.version)throw new HttpError(400,'Versioni del pacchetto, lockfile e manifest non coerenti.');
     if (Number(lock.lockfileVersion || 0) < 3) throw new HttpError(400, "package-lock.json non riproducibile: lockfileVersion 3 o superiore richiesto.");
     if (manifest.hashes) {
       for (const [pathName, expected] of Object.entries(manifest.hashes)) {

@@ -26,6 +26,7 @@ export const shoppingItemSchema = z.object({
   id: uuid, text: z.string().trim().min(1).max(1000), source: z.string().max(300).default(''),
   quantity: z.number().finite().min(0).max(1e6).nullable().optional(), unit: z.string().max(40).nullable().optional(),
   recipe_id: uuid.nullable().optional(), done: z.boolean(), revision: revisionSchema.optional()
+  ,quantity_max:z.number().finite().min(0).max(1e7).nullable().optional(),ingredient_key:z.string().max(1000).optional(),group_name:z.string().max(40).optional(),contributions:z.array(z.object({key:z.string().max(5000),source:z.string().max(300),quantity:z.number().finite().min(0).nullable(),quantity_max:z.number().finite().min(0).nullable()})).max(500).optional()
 });
 export const uploadMetadataSchema = z.object({ recipeId: uuid, contentType: z.enum(['image/jpeg', 'image/png', 'image/webp']), size: z.number().int().positive().max(10 * 1024 * 1024) });
 export const manifestSchema = z.object({

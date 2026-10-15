@@ -405,6 +405,7 @@ export function SettingsPanel({
               onChange={(e) => setUpdateFile(e.target.files?.[0] || null)}
             />
           </label>
+          {updateFile&&<p className="update-file-name">{updateFile.name}</p>}
           <button
             className="button primary"
             disabled={busy || !updateFile}

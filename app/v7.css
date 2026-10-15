@@ -1189,3 +1189,4 @@ textarea::placeholder {
   max-height: 180px;
   box-shadow: none;
 }
+.page-section,.section-heading>*,.recipes-hero>*,.new-layout>*,.settings-grid>*,.form-grid>*,.notes-grid>*,.step-badge>div,.shopping-copy{min-width:0}.shopping-copy{overflow-wrap:anywhere}.button svg,.status-line>svg{flex-shrink:0}.editor-accordion summary{line-height:1.35;padding-block:10px}.editor-accordion summary>span{min-width:0;flex:1}.editor-accordion summary small{min-width:0;max-width:32%}.editor-accordion summary::after{flex:0 0 25px}.update-file-name{max-width:100%;overflow-wrap:anywhere}@media(max-width:720px){.form-grid.four{grid-template-columns:repeat(2,minmax(0,1fr))}}

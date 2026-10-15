@@ -404,3 +404,18 @@ test("titolo lungo, dettaglio e tastiera restano dentro il viewport", async ({
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).toHaveCount(0);
 });
+
+test.describe('PWA sulla build compilata',()=>{
+ test.use({serviceWorkers:'allow'});
+ test('primo avvio conserva shell e ricette per un vero riavvio senza rete',async({page,context})=>{
+  test.skip(process.env.PLAYWRIGHT_PRODUCTION!=='1','La cache della shell va verificata sulla build compilata.');
+  const{calls}=await fixture(page);
+  await page.evaluate(()=>navigator.serviceWorker.ready);
+  await expect.poll(()=>page.evaluate(async()=>{const cache=await caches.open('ricettario-shell-v7-official-brand');return(await cache.keys()).filter(request=>request.url.includes('/_next/static/')&&request.url.includes('.js')).length;})).toBeGreaterThan(0);
+  await expect.poll(()=>page.evaluate(()=>!!navigator.serviceWorker.controller)).toBe(true);
+  calls.offline=true;await context.setOffline(true);await page.reload();
+  await expect(page.getByRole('button',{name:'Apri '+recipe.title})).toBeVisible();
+  await expect(page.getByRole('status').filter({hasText:'Offline —'})).toBeVisible();
+  await page.getByRole('button',{name:'Apri '+recipe.title}).click();await expect(page.getByRole('dialog',{name:recipe.title})).toBeVisible();
+ });
+});

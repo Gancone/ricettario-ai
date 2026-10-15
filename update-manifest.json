@@ -1,18 +1,19 @@
 {
   "name": "Ricettario AI",
-  "version": "6.1.0",
+  "version": "7.0.0",
   "channel": "stable",
-  "description": "Bozze recuperabili, inserimento manuale, ricerca migliorata, lista spesa con sincronizzazione verificata, dosi e timer corretti, controlli server e interfaccia accessibile.",
+  "description": "Cucina personale: dispensa, piano pasti, storico, ingredienti strutturati, backup portabili con fotografie, import universale, offline e interfaccia accessibile.",
   "managedRoots": [
     "app",
     "components",
     "lib",
     "public",
     "types",
-    "tools"
+    "tools",
+    "database",
+    "tests",
+    ".github",
+    "docs"
   ],
-  "delete": [
-    "lib/update-auth.ts"
-  ],
-  "notes": "Nessun aggiornamento cancella ricette. Il backup pre-update è obbligatorio; se fallisce l’update viene bloccato. I metadati nuovi sono salvati nel JSON nutrition esistente, quindi non servono modifiche SQL manuali. I pacchetti completi includono public/branding, public/icons, app/favicon.ico e gli script in tools; la copia ICO del collegamento Windows vive fuori dalle cartelle sostituite dall’installer."
+  "notes": "Richiede le migrazioni additive 003-005. Conserva tutte le ricette e il logo ufficiale. Updater su ramo Preview; nessun rilascio Production automatico. Backup completo prima di importazione, ripristino, migrazioni e aggiornamenti."
 }

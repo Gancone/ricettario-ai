@@ -7,7 +7,7 @@ export const urlSchema = z.string().max(4096).refine(value => {
 }, 'URL HTTP/HTTPS non valido');
 const optionalUrl = z.union([urlSchema, z.literal('')]).optional();
 const number = z.number().finite().min(0).max(1e7).optional();
-export const nutritionSchema = z.object({ calories: number, protein: number, carbs: number, fat: number, sugars: number, fiber: number, salt: number, estimated: z.boolean().optional() });
+export const nutritionSchema = z.object({ calories: number, protein: number, carbs: number, fat: number, sugars: number, fiber: number, salt: number, estimated: z.boolean().optional(),confidence:z.enum(['high','medium','low']).optional(),consistencyWarning:z.string().max(300).optional() });
 export const recipeSchema = z.object({
   id: uuid, title: z.string().trim().min(1).max(300), category: z.string().trim().max(120).optional().transform(v => v || 'Senza categoria'),
   tags: z.array(z.string().trim().max(100)).max(100),

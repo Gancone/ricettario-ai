@@ -1,4 +1,5 @@
 import type { Recipe } from "@/types/recipe";
+import {ingredientList} from './ingredients';
 
 function integerValue(value: number | undefined) {
   if (value == null) return null;
@@ -15,6 +16,8 @@ function rawNutrition(row: any) {
 export function fromDb(row: any): Recipe {
   const raw = rawNutrition(row);
   const nutrition = {
+    confidence: raw.confidence,
+    consistencyWarning: raw.consistencyWarning,
     calories: raw.calories ?? undefined,
     protein: raw.protein ?? undefined,
     carbs: raw.carbs ?? undefined,
@@ -36,6 +39,7 @@ export function fromDb(row: any): Recipe {
     category: row.category || "Senza categoria",
     tags: row.tags || [],
     ingredients: row.ingredients || [],
+    structuredIngredients: ingredientList(row.ingredients || []),
     steps: row.steps || [],
     sourceNotes: String(row.source_notes ?? raw._sourceNotes ?? ""),
     notes: row.notes || "",
@@ -52,7 +56,7 @@ export function fromDb(row: any): Recipe {
 }
 
 export function toDb(recipe: Partial<Recipe>) {
-  const nutrition = Object.fromEntries(Object.entries(recipe.nutrition || {}).filter(([key]) => ['calories','protein','carbs','fat','sugars','fiber','salt','estimated'].includes(key)));
+  const nutrition = {...Object.fromEntries(Object.entries(recipe.nutrition || {}).filter(([key]) => ['calories','protein','carbs','fat','sugars','fiber','salt','estimated','confidence','consistencyWarning'].includes(key))),_structuredIngredients:ingredientList(recipe.ingredients||[])};
 
   return {
     title: recipe.title,

@@ -2,7 +2,7 @@ import { supabase } from './supabase';
 import crypto from 'node:crypto';
 import { requireAppAuth, configuredAppPassword, requireSameOrigin } from './app-auth';
 import { HttpError, errorResponse } from './validation';
-export const SCHEMA_VERSION = '001_backend_safety';
+export const SCHEMA_VERSION = '002_shopping_read';
 export async function requireSchema() {
  const {data,error}=await supabase.from('schema_migrations').select('id').eq('id',SCHEMA_VERSION).maybeSingle();
  if(error||!data) throw new HttpError(503,'Schema database non aggiornato. Esegui npm run db:migrate.',{code:'SCHEMA_NOT_READY'});
@@ -17,6 +17,14 @@ export async function guard(request:Request,operation='read',login=false) {
   const now = Date.now(); const current = loginAttempts.get(key);
   if (!current || current.expires <= now) loginAttempts.set(key, { count: 1, expires: now + 15 * 60 * 1000 });
   else if (++current.count > 10) return Response.json({ error: 'Troppi tentativi. Riprova più tardi.' }, { status: 429, headers: { 'retry-after': '900' } });
+  try {
+   const bucket=crypto.createHash('sha256').update(key).digest('hex').slice(0,32);
+   const {data,error}=await supabase.rpc('consume_limit',{p_key:'login:'+bucket,p_limit:10,p_seconds:900});
+   // Only first-install schema absence permits the bounded in-memory fallback.
+   if(error&&!['PGRST202','42P01','42883'].includes(error.code||''))throw error;
+   if(!error&&!data)return Response.json({error:'Troppi tentativi. Riprova più tardi.'},{status:429,headers:{'retry-after':'900'}});
+  }catch{return Response.json({error:'Accesso temporaneamente non disponibile. Riprova.'},{status:503});}
+  if(loginAttempts.size>1000)for(const [ip,attempt] of loginAttempts)if(attempt.expires<=now)loginAttempts.delete(ip);
   return null;
  }
  try {

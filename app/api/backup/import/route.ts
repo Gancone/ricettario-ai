@@ -27,14 +27,18 @@ export async function POST(request: Request) {
     const totalSize = entries.reduce((sum, entry) => sum + Number(entry.header.size || 0), 0);
     if (totalSize > MAX_UNCOMPRESSED_BYTES) throw new HttpError(413, "Backup decompresso troppo grande.");
     const byPath = new Map(entries.map((entry) => [entry.entryName.replace(/\\/g, "/"), entry]));
+    if(byPath.size!==entries.length)throw new HttpError(400,"Percorsi duplicati nel backup.");
     const manifestEntry = byPath.get("manifest.json");
     if (!manifestEntry) throw new HttpError(400, "Manifest backup mancante.");
     const manifest = backupZipManifestSchema.parse(JSON.parse(manifestEntry.getData().toString("utf8")));
+    const verifiedPaths=new Set<string>();
     for (const item of manifest.files) {
       if (!safePath(item.path)) throw new HttpError(400, "Percorso manifest non consentito.");
       const entry = byPath.get(item.path); if (!entry) throw new HttpError(422, "File backup mancante.");
       const bytes = entry.getData(); if (bytes.length !== item.bytes || createHash("sha256").update(bytes).digest("hex") !== item.checksum) throw new HttpError(422, "Checksum backup non valido.");
+      verifiedPaths.add(item.path);
     }
+    if(entries.some(entry=>entry.entryName!=="manifest.json"&&!verifiedPaths.has(entry.entryName)))throw new HttpError(422,"File non verificato nel backup.");
     const readJsonFile = (name: string) => { const entry = byPath.get(name); if (!entry) return []; const value = JSON.parse(entry.getData().toString("utf8")); if (!Array.isArray(value)) throw new HttpError(422, `File ${name} non valido.`); return value; };
     const recipes: any[] = readJsonFile("data/recipes.json");
     const categories: any[] = readJsonFile("data/categories.json");
@@ -44,10 +48,12 @@ export async function POST(request: Request) {
     if (mode === "overwrite" && String(form.get("confirm") || "") !== "OVERWRITE_WITH_HISTORY") throw new HttpError(400, "Conferma esplicita obbligatoria.");
     const revisions = JSON.parse(String(form.get("expectedRevisions") || "{}"));
     if (!revisions || typeof revisions !== "object" || Array.isArray(revisions)) throw new HttpError(400, "expectedRevisions non valido.");
-    if (mode === "overwrite") { const safety = await createDatabaseSnapshot("pre-explicit-import"); if (safety.suspicious) throw new HttpError(409, "Backup sospetto: sovrascrittura bloccata."); }
+    const safety=await createDatabaseSnapshot(mode==="overwrite"?"pre-explicit-import":"pre-additive-import");
+    if(!safety.verified||safety.suspicious)throw new HttpError(409,"Backup preventivo non verificato: importazione bloccata.");
     for (const raw of recipes) {
       const id = String(raw?.id || "");
       if (!id) continue;
+      if(mode==="additive"){const {data,error}=await supabase.from("recipes").select("id").eq("id",id).maybeSingle();if(error)throw error;if(data)continue;}
       const image = entries.find((entry) => entry.entryName.replace(/\\/g, "/").startsWith(`images/${id}/`));
       if (image) { const bytes = image.getData(); raw.image_url = await persistRecipeImageBytes(id, bytes, typeFor(image.entryName)); }
     }

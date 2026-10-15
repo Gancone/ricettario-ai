@@ -6,7 +6,7 @@ export type ShoppingStateItem = { id: string; text: string; source: string; done
 
 export async function GET(request: Request) {
   const auth = await guard(request); if (auth) return auth;
-  try { await requireSchema(); const { data, error } = await supabase.from("shopping_items").select("*").is("deleted_at", null).order("created_at"); if (error) throw error; return Response.json(data || [], { headers: { "cache-control": "no-store" } }); }
+  try { await requireSchema(); const { data, error } = await supabase.rpc("shopping_read"); if (error) throw error; return Response.json(data, { headers: { "cache-control": "no-store" } }); }
   catch (error) { return errorResponse(error); }
 }
 

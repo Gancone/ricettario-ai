@@ -4,16 +4,17 @@ import { access, chmod, readFile, readdir, stat, writeFile } from "fs/promises";
 import { createHash } from "node:crypto";
 import { tmpdir } from "os";
 import path from "path";
+import { validateExternalUrl } from "./safe-fetch";
 
 const exec = promisify(execFile);
 const IS_WINDOWS = process.platform === "win32";
 const YTDLP_PATH = IS_WINDOWS ? "yt-dlp" : path.join(tmpdir(), "ricettario-yt-dlp-linux");
-const YTDLP_VERSION = process.env.YTDLP_VERSION || "";
-const YTDLP_SHA256 = (process.env.YTDLP_SHA256 || "").toLowerCase();
+export const YTDLP_VERSION = process.env.YTDLP_VERSION || "";
+export const YTDLP_SHA256 = (process.env.YTDLP_SHA256 || "").toLowerCase();
 const MAX_MEDIA_BYTES = 50 * 1024 * 1024;
 
 async function run(command: string, args: string[]) {
-  return exec(command, args, { maxBuffer: 30 * 1024 * 1024, windowsHide: true });
+  return exec(command, ["--ignore-config", ...args], { maxBuffer: 8 * 1024 * 1024, windowsHide: true, timeout: 130000 });
 }
 
 export async function ensureYtDlp() {
@@ -32,7 +33,9 @@ export async function ensureYtDlp() {
 
   try {
     await access(YTDLP_PATH);
-    await run(YTDLP_PATH, ["--version"]);
+    if(createHash("sha256").update(await readFile(YTDLP_PATH)).digest("hex")!==YTDLP_SHA256)throw new Error("Checksum cache video non valido");
+    const installed=(await run(YTDLP_PATH, ["--version"])).stdout.trim();
+    if(installed!==YTDLP_VERSION)throw new Error("Versione cache video non valida");
     return;
   } catch {}
 
@@ -51,6 +54,7 @@ export async function ensureYtDlp() {
 }
 
 export async function getYtDlpMetadata(url: string) {
+  await validateSocialUrl(url);
   await ensureYtDlp();
   try {
     const info = await run(YTDLP_PATH, [
@@ -71,6 +75,7 @@ export async function getYtDlpMetadata(url: string) {
 }
 
 export async function downloadYtDlpMedia(url: string, workdir: string) {
+  await validateSocialUrl(url);
   await ensureYtDlp();
   const output = path.join(workdir, "source.%(ext)s");
   try {
@@ -109,6 +114,7 @@ function mimeForThumbnail(file: string) {
 }
 
 export async function downloadYtDlpThumbnailDataUrl(url: string, workdir: string) {
+  await validateSocialUrl(url);
   await ensureYtDlp();
   const output = path.join(workdir, "thumb.%(ext)s");
   try {
@@ -138,6 +144,7 @@ export async function downloadYtDlpThumbnailDataUrl(url: string, workdir: string
 
 
 export async function downloadYtDlpThumbnailBytes(url: string, workdir: string) {
+  await validateSocialUrl(url);
   await ensureYtDlp();
   const output = path.join(workdir, "thumb-direct.%(ext)s");
   try {
@@ -163,3 +170,5 @@ export async function downloadYtDlpThumbnailBytes(url: string, workdir: string) 
     return null;
   }
 }
+
+async function validateSocialUrl(value:string){const {url}=await validateExternalUrl(value);if(!/(^|\.)(youtube\.com|youtu\.be|instagram\.com|tiktok\.com)$/.test(url.hostname))throw new Error("Questo sito non è una fonte video supportata.");}

@@ -100,7 +100,8 @@ export async function restoreLatestSnapshotAdditively(overwrite=false,revisions:
  await requireSchema();const backup=await readLatestSnapshot();const report=newReport();
  if(!backup)return {...report,restored:false,recipes:0,categories:0,createdAt:''};
  if(backup.version===2)await verifyStoredBackup(backup);
- if(overwrite){const safety=await createDatabaseSnapshot('pre-explicit-restore');if(safety.suspicious)throw new HttpError(409,'Backup sospetto: sovrascrittura bloccata.');}
+ const safety=await createDatabaseSnapshot(overwrite?'pre-explicit-restore':'pre-additive-restore');
+ if(!safety.verified||safety.suspicious)throw new HttpError(409,'Backup preventivo non verificato: ripristino bloccato.');
  for await(const rows of backupRows(backup,'recipes'))await restoreRows(rows,report,overwrite,revisions);
  let categories=0;
  for await(const rows of backupRows(backup,'categories')){

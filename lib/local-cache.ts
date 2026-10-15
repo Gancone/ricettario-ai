@@ -1,3 +1,4 @@
+import {readOffline,writeOffline} from "./offline-db";
 import type { Recipe } from "@/types/recipe";
 
 const PRIMARY_KEY = "ricettario-safe-v6";
@@ -68,16 +69,8 @@ export function readLocalRecipeSafetyCopy(): Recipe[] {
   return [...byId.values()].sort((a, b) => (Date.parse(b.createdAt || "") || 0) - (Date.parse(a.createdAt || "") || 0));
 }
 
-export function writeLocalRecipeSafetyCopy(recipes: Recipe[]) {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(
-      PRIMARY_KEY,
-      JSON.stringify({ version: 1, savedAt: new Date().toISOString(), recipes })
-    );
-  } catch {}
-}
-
+export function writeLocalRecipeSafetyCopy(recipes:Recipe[]){return writeOffline('recipes',recipes);}
+export async function readRecipeCache(){const cached=await readOffline<Recipe[]>('recipes').catch(()=>undefined);return mergeRecipes(cached||[],readLocalRecipeSafetyCopy());}
 export function mergeRecipes(primary: Recipe[], secondary: Recipe[]) {
   const byId = new Map<string, Recipe>();
   for (const recipe of secondary) byId.set(recipe.id, recipe);

@@ -7,7 +7,7 @@ export async function GET(request: Request) {
     if (new URL(request.url).searchParams.get("format") === "zip") {
       const payload = await exportCurrentBackupZip();
       const date = new Date().toISOString().slice(0, 10);
-      return new Response(new Uint8Array(payload), { headers: { "content-type": "application/zip", "content-disposition": `attachment; filename="backup-ricettario-${date}.zip"`, "cache-control": "no-store" } });
+      return new Response(new Uint8Array(payload), { headers: { "content-type": "application/zip", "content-disposition": `attachment; filename="Ricettario-AI-backup-${date}.zip"`, "cache-control": "no-store" } });
     }
     const payload = await exportCurrentBackup();
     const date = new Date().toISOString().slice(0, 10);

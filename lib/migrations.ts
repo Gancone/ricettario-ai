@@ -6,6 +6,7 @@ import { supabase } from './supabase';
 import { encodeChunk,sealManifest,type Chunk } from './backup-format';
 import { checksum } from './backup-format';
 import { HttpError } from './validation';
+import {BACKUP_ENTITIES} from './backup-format';
 import pkg from '../package.json' with { type: 'json' };
 export async function migrateDatabase(){
  const connectionString=process.env.DATABASE_URL;
@@ -45,7 +46,7 @@ export async function migrateDatabase(){
      const saved=await supabase.storage.from(bucket).upload(id+'/shopping-legacy.json',bytes,{contentType:'application/json',upsert:false});if(saved.error)throw saved.error;
      const copy=await supabase.storage.from(bucket).download(id+'/shopping-legacy.json');if(copy.error||!copy.data||checksum(Buffer.from(await copy.data.arrayBuffer()))!==checksum(bytes))throw new Error('Backup spesa non verificato');
     }
-    for(const table of ['recipes','categories','shopping_items','recipe_versions'] as const){
+    for(const table of BACKUP_ENTITIES){
      const exists=await client.query('SELECT to_regclass($1) AS name',['public.'+table]);if(!exists.rows[0].name)continue;
      await client.query('DECLARE migration_rows NO SCROLL CURSOR FOR SELECT * FROM public.'+table+' ORDER BY id');
      let index=0;

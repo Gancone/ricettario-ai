@@ -10,6 +10,9 @@ import { applyRecipe } from './recipe-store';
 import { IMAGE_BUCKET, ownImagePath } from './image-storage';
 import yazl from 'yazl';
 import pkg from '../package.json';
+import {BACKUP_ENTITIES} from './backup-format';
+import {uuid} from './validation';
+async function snapshotEntities(){const{data,error}=await supabase.from('schema_migrations').select('id').eq('id','003_personal_kitchen').maybeSingle();if(error)throw error;return data?BACKUP_ENTITIES:BACKUP_ENTITIES.slice(0,4);}
 export const BACKUP_BUCKET='ricettario-backups';
 let ready=false;
 async function ensureBucket(){
@@ -40,7 +43,7 @@ export async function createDatabaseSnapshot(reason='automatic'){
   const before=await epoch();const good=await pointer('last-known-good.json')||await pointer('latest.json');
   const stamp=new Date().toISOString();const id='backups/'+stamp.replace(/[:.]/g,'-')+'-'+randomUUID();
   const chunks:Chunk[]=[];let recipeCount=0;let categoryCount=0;
-  for(const entity of ['recipes','categories','shopping_items','recipe_versions'] as const){
+  for(const entity of await snapshotEntities()){
    let index=0;let pending:any[]=[];let size=0;
    const flush=async()=>{
     if(!pending.length)return;const encoded=encodeChunk(pending);if(encoded.bytes.length>9*1024*1024)throw new HttpError(413,'Una riga del backup supera il limite per chunk.');
@@ -111,6 +114,7 @@ export async function restoreLatestSnapshotAdditively(overwrite=false,revisions:
  for await(const rows of backupRows(backup,'shopping_items')){
   const {error}=await supabase.rpc('shopping_apply',{p_expected:null,p_items:rows,p_replace:false});if(error)report.errors.push({id:'shopping',error:'Lista non importata'});
  }
+ for(const entity of BACKUP_ENTITIES.slice(3)){if(entity==='recipe_versions'||entity==='recipe_ingredients'||entity==='pantry_items'||entity==='meal_plan_entries'||entity==='cooking_history'||entity==='recipe_settings')for await(const rows of backupRows(backup,entity))for(const row of rows){if(!uuid.safeParse(row.id).success){report.errors.push({id:entity,error:'ID non valido'});continue;}const{data,error}=await supabase.from(entity).select('id').eq('id',row.id).maybeSingle();if(error)throw error;if(data){report.skippedExisting++;continue;}const result=await supabase.from(entity).insert(row);if(result.error&&result.error.code!=='23505')report.errors.push({id:row.id,error:'Record non ripristinato'});}}
  return {...report,restored:true,recipes:report.inserted,categories,createdAt:backup.created_at||backup.createdAt};
 }
 export async function backupStatus(){
@@ -124,11 +128,4 @@ export async function exportCurrentBackup(){
  const content={recipes,categories,shopping};return {...content,schemaVersion:1,createdAt:new Date().toISOString(),checksum:checksum(canonical(content)),app_version:pkg.version};
 }
 
-export async function exportCurrentBackupZip(){
- const entities:any={recipes:await allRows('recipes'),categories:await allRows('categories'),shopping_items:await allRows('shopping_items'),recipe_versions:await allRows('recipe_versions')};
- const files:{name:string;bytes:Buffer}[]=[];const imageFiles:any[]=[];
- for(const row of entities.recipes){const imagePath=ownImagePath(row.image_url||'');if(!imagePath)continue;const {data}=await supabase.storage.from(IMAGE_BUCKET).download(imagePath);if(!data||data.size>10*1024*1024)continue;const bytes=Buffer.from(await data.arrayBuffer());const name='images/'+row.id+'/'+imagePath.split('/').pop();files.push({name,bytes});imageFiles.push({recipe_id:row.id,path:name,bytes:bytes.length,checksum:checksum(bytes)});}
- for(const [name,rows] of Object.entries(entities))files.push({name:`data/${name}.json`,bytes:Buffer.from(JSON.stringify(rows))});
- const manifest={format:'ricettario-ai-backup',version:2,createdAt:new Date().toISOString(),app_version:pkg.version,files:[...files.map(f=>({path:f.name,bytes:f.bytes.length,checksum:checksum(f.bytes)})),...imageFiles]};files.push({name:'manifest.json',bytes:Buffer.from(JSON.stringify(manifest,null,2))});
- return await new Promise<Buffer>((resolve,reject)=>{const zip=new yazl.ZipFile();const chunks:Buffer[]=[];let size=0;let failed=false;zip.outputStream.on('data',(chunk:Buffer)=>{if(failed)return;size+=chunk.length;if(size>100*1024*1024){failed=true;reject(new HttpError(413,'Backup ZIP troppo grande.'));return;}chunks.push(chunk);});zip.outputStream.on('error',(error)=>{if(!failed){failed=true;reject(error);}});zip.outputStream.on('end',()=>{if(!failed)resolve(Buffer.concat(chunks));});for(const file of files)zip.addBuffer(file.bytes,file.name);zip.end();});
-}
+export async function exportCurrentBackupZip(){const {exportPortableBackup}=await import('./portable-backup');return exportPortableBackup();}

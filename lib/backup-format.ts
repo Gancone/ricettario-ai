@@ -16,7 +16,8 @@ export function decodeChunk(bytes:Buffer,hash:string,count:number){
 export function suspiciousBackup(count:number,previous:number){
  return previous>0 && (count===0 || (previous>=10 && count<previous*0.7));
 }
-export type Chunk={path:string;entity:'recipes'|'categories'|'shopping_items'|'recipe_versions';count:number;bytes:number;checksum:string};
+export const BACKUP_ENTITIES=['recipes','categories','shopping_items','recipe_versions','recipe_ingredients','pantry_items','meal_plan_entries','cooking_history','recipe_settings'] as const;
+export type Chunk={path:string;entity:typeof BACKUP_ENTITIES[number];count:number;bytes:number;checksum:string};
 export type Manifest={version:2;created_at:string;recipe_count:number;category_count:number;checksum:string;app_version:string;reason:string;chunks:Chunk[];suspicious:boolean;id:string};
 export function sealManifest(value:Omit<Manifest,'checksum'>):Manifest{return {...value,checksum:checksum(canonical(value))};}
 export function verifyManifest(value:any):asserts value is Manifest{
@@ -26,7 +27,7 @@ export function verifyManifest(value:any):asserts value is Manifest{
  const paths=new Set<string>();
  for(const c of value.chunks){
   if(!c.path.startsWith(value.id+'/')||!/^[a-zA-Z0-9/_-]+\.json\.gz$/.test(c.path)||paths.has(c.path)||
-   !['recipes','categories','shopping_items','recipe_versions'].includes(c.entity)||!Number.isSafeInteger(c.count)||c.count<0||c.bytes>10*1024*1024||!Number.isSafeInteger(c.bytes)||c.bytes<1||!/^[a-f0-9]{64}$/.test(c.checksum))
+   !BACKUP_ENTITIES.includes(c.entity)||!Number.isSafeInteger(c.count)||c.count<0||c.bytes>10*1024*1024||!Number.isSafeInteger(c.bytes)||c.bytes<1||!/^[a-f0-9]{64}$/.test(c.checksum))
    throw new HttpError(422,'Descrittore chunk non valido.');
   paths.add(c.path);
  }

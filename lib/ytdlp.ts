@@ -4,57 +4,110 @@ import { access, chmod, readFile, readdir, stat, writeFile } from "fs/promises";
 import { createHash } from "node:crypto";
 import { tmpdir } from "os";
 import path from "path";
+import { validateExternalUrl } from "./safe-fetch";
 
 const exec = promisify(execFile);
 const IS_WINDOWS = process.platform === "win32";
-const YTDLP_PATH = IS_WINDOWS ? "yt-dlp" : path.join(tmpdir(), "ricettario-yt-dlp-linux");
-// Official yt-dlp/yt-dlp release asset digest, verified when preparing this release.
+let YTDLP_PATH = IS_WINDOWS
+  ? "yt-dlp.exe"
+  : path.join(tmpdir(), "ricettario-yt-dlp-linux");
+// Official release digests checked against SHA2-256SUMS on 15 October 2026.
 export const YTDLP_VERSION = process.env.YTDLP_VERSION || "2026.08.19";
-export const YTDLP_SHA256 = (process.env.YTDLP_SHA256 || (process.env.YTDLP_VERSION ? "" : "58162f9bfdc27458ea47bfcb311cf47028f17d8154a8bf7d689861d46399230a")).toLowerCase();
+export const YTDLP_SHA256 = (
+  process.env.YTDLP_SHA256 ||
+  (process.env.YTDLP_VERSION
+    ? ""
+    : "58162f9bfdc27458ea47bfcb311cf47028f17d8154a8bf7d689861d46399230a")
+).toLowerCase();
+const WINDOWS_SHA256 = (
+  process.env.YTDLP_WINDOWS_SHA256 ||
+  (process.env.YTDLP_VERSION
+    ? ""
+    : "66674953fe251b89f4d08c5f0e35e0728679bd67ab3d7d05c0562af101dd3e7a")
+).toLowerCase();
 const MAX_MEDIA_BYTES = 50 * 1024 * 1024;
 
 async function run(command: string, args: string[]) {
-  return exec(command, args, { maxBuffer: 30 * 1024 * 1024, windowsHide: true, timeout: 120000 });
+  return exec(command, ["--ignore-config", ...args], {
+    maxBuffer: 8 * 1024 * 1024,
+    windowsHide: true,
+    timeout: 130000,
+  });
 }
 
 export async function ensureYtDlp() {
-  if (!/^\d{4}\.\d{2}\.\d{2}$/.test(YTDLP_VERSION) || !/^[a-f0-9]{64}$/.test(YTDLP_SHA256)) {
-    throw new Error("Motore video non configurato: imposta YTDLP_VERSION e YTDLP_SHA256 con una release verificata.");
+  if (
+    !/^\d{4}\.\d{2}\.\d{2}$/.test(YTDLP_VERSION) ||
+    !/^[a-f0-9]{64}$/.test(YTDLP_SHA256)
+  ) {
+    throw new Error(
+      "Motore video non configurato: imposta YTDLP_VERSION e YTDLP_SHA256 con una release verificata.",
+    );
   }
   if (IS_WINDOWS) {
     try {
-      const installed = (await run("yt-dlp", ["--version"])).stdout.trim();
+      const executable = (
+        await exec("where.exe", ["yt-dlp.exe"], {
+          windowsHide: true,
+          timeout: 10000,
+        })
+      ).stdout
+        .trim()
+        .split(/\r?\n/)[0];
+      if (
+        !/^[a-f0-9]{64}$/.test(WINDOWS_SHA256) ||
+        createHash("sha256")
+          .update(await readFile(/* turbopackIgnore: true */ executable))
+          .digest("hex") !== WINDOWS_SHA256
+      )
+        throw new Error("Checksum Windows non valido");
+      YTDLP_PATH = executable;
+      const installed = (await run(executable, ["--version"])).stdout.trim();
       if (installed !== YTDLP_VERSION) throw new Error("versione diversa");
       return;
     } catch {
-      throw new Error("yt-dlp non è disponibile sul PC. Usa il sito pubblicato su Vercel oppure installa yt-dlp.");
+      throw new Error(
+        "yt-dlp non è disponibile sul PC. Usa il sito pubblicato su Vercel oppure installa yt-dlp.",
+      );
     }
   }
 
   try {
     await access(YTDLP_PATH);
-    const cached=await readFile(/* turbopackIgnore: true */ YTDLP_PATH);
-    if(createHash('sha256').update(cached).digest('hex')===YTDLP_SHA256){
-      const installed=(await run(YTDLP_PATH, ["--version"])).stdout.trim();
-      if(installed===YTDLP_VERSION)return;
-    }
+    if (
+      createHash("sha256")
+        .update(await readFile(/* turbopackIgnore: true */ YTDLP_PATH))
+        .digest("hex") !== YTDLP_SHA256
+    )
+      throw new Error("Checksum cache video non valido");
+    const installed = (await run(YTDLP_PATH, ["--version"])).stdout.trim();
+    if (installed !== YTDLP_VERSION)
+      throw new Error("Versione cache video non valida");
+    return;
   } catch {}
 
-  const response = await fetch(`https://github.com/yt-dlp/yt-dlp/releases/download/${YTDLP_VERSION}/yt-dlp_linux`, {
-    signal: AbortSignal.timeout(45000)
-  });
-  if (!response.ok) throw new Error("Non riesco a preparare il motore video sul server.");
+  const response = await fetch(
+    `https://github.com/yt-dlp/yt-dlp/releases/download/${YTDLP_VERSION}/yt-dlp_linux`,
+    {
+      signal: AbortSignal.timeout(45000),
+    },
+  );
+  if (!response.ok)
+    throw new Error("Non riesco a preparare il motore video sul server.");
 
   const bytes = Buffer.from(await response.arrayBuffer());
   const digest = createHash("sha256").update(bytes).digest("hex");
-  if (digest !== YTDLP_SHA256) throw new Error("Verifica SHA-256 di yt-dlp fallita.");
+  if (digest !== YTDLP_SHA256)
+    throw new Error("Verifica SHA-256 di yt-dlp fallita.");
   await writeFile(YTDLP_PATH, bytes);
   await chmod(YTDLP_PATH, 0o755);
   const installed = (await run(YTDLP_PATH, ["--version"])).stdout.trim();
-  if (installed !== YTDLP_VERSION) throw new Error("Versione yt-dlp installata diversa da quella approvata.");
+  if (installed !== YTDLP_VERSION)
+    throw new Error("Versione yt-dlp installata diversa da quella approvata.");
 }
 
 export async function getYtDlpMetadata(url: string) {
+  await validateSocialUrl(url);
   await ensureYtDlp();
   try {
     const info = await run(YTDLP_PATH, [
@@ -62,12 +115,12 @@ export async function getYtDlpMetadata(url: string) {
       "--no-warnings",
       "--skip-download",
       "--dump-single-json",
-      url
+      url,
     ]);
     const json = JSON.parse(info.stdout);
     return {
       text: [json.title, json.description].filter(Boolean).join("\n\n"),
-      thumbnail: String(json.thumbnail || "")
+      thumbnail: String(json.thumbnail || ""),
     };
   } catch {
     return { text: "", thumbnail: "" };
@@ -75,32 +128,42 @@ export async function getYtDlpMetadata(url: string) {
 }
 
 export async function downloadYtDlpMedia(url: string, workdir: string) {
+  await validateSocialUrl(url);
   await ensureYtDlp();
   const output = path.join(workdir, "source.%(ext)s");
   try {
     await run(YTDLP_PATH, [
       "--no-playlist",
       "--no-warnings",
-      "--socket-timeout", "20",
-      "--retries", "1",
-      "--max-filesize", "50M",
+      "--socket-timeout",
+      "20",
+      "--retries",
+      "1",
+      "--max-filesize",
+      "50M",
       "--no-part",
-      "-f", "bestaudio[ext=m4a]/bestaudio[ext=webm]/best[ext=mp4]/best",
-      "-o", output,
-      url
+      "-f",
+      "bestaudio[ext=m4a]/bestaudio[ext=webm]/best[ext=mp4]/best",
+      "-o",
+      output,
+      url,
     ]);
   } catch (error: any) {
     const details = String(error?.stderr || error?.message || "").trim();
     throw new Error(
       "Il social non ha permesso di leggere automaticamente il video. Il post può richiedere login oppure bloccare i server cloud." +
-      (details ? `\n\nDettaglio: ${details.slice(-900)}` : "")
+        (details ? `\n\nDettaglio: ${details.slice(-900)}` : ""),
     );
   }
 
   const files = await readdir(workdir);
   const found = files.find((f) => f.startsWith("source."));
-  if (!found) throw new Error("Il video è stato letto ma non trovo il file multimediale.");
-  if ((await stat(path.join(workdir, found))).size > MAX_MEDIA_BYTES) throw new Error("Il video supera il limite di 50 MB.");
+  if (!found)
+    throw new Error(
+      "Il video è stato letto ma non trovo il file multimediale.",
+    );
+  if ((await stat(path.join(workdir, found))).size > MAX_MEDIA_BYTES)
+    throw new Error("Il video supera il limite di 50 MB.");
   return path.join(workdir, found);
 }
 
@@ -112,7 +175,11 @@ function mimeForThumbnail(file: string) {
   return "";
 }
 
-export async function downloadYtDlpThumbnailDataUrl(url: string, workdir: string) {
+export async function downloadYtDlpThumbnailDataUrl(
+  url: string,
+  workdir: string,
+) {
+  await validateSocialUrl(url);
   await ensureYtDlp();
   const output = path.join(workdir, "thumb.%(ext)s");
   try {
@@ -121,10 +188,13 @@ export async function downloadYtDlpThumbnailDataUrl(url: string, workdir: string
       "--no-warnings",
       "--skip-download",
       "--write-thumbnail",
-      "--socket-timeout", "20",
-      "--retries", "1",
-      "-o", output,
-      url
+      "--socket-timeout",
+      "20",
+      "--retries",
+      "1",
+      "-o",
+      output,
+      url,
     ]);
 
     const files = await readdir(workdir);
@@ -140,8 +210,11 @@ export async function downloadYtDlpThumbnailDataUrl(url: string, workdir: string
   }
 }
 
-
-export async function downloadYtDlpThumbnailBytes(url: string, workdir: string) {
+export async function downloadYtDlpThumbnailBytes(
+  url: string,
+  workdir: string,
+) {
+  await validateSocialUrl(url);
   await ensureYtDlp();
   const output = path.join(workdir, "thumb-direct.%(ext)s");
   try {
@@ -150,10 +223,13 @@ export async function downloadYtDlpThumbnailBytes(url: string, workdir: string) 
       "--no-warnings",
       "--skip-download",
       "--write-thumbnail",
-      "--socket-timeout", "20",
-      "--retries", "1",
-      "-o", output,
-      url
+      "--socket-timeout",
+      "20",
+      "--retries",
+      "1",
+      "-o",
+      output,
+      url,
     ]);
     const files = await readdir(workdir);
     const found = files.find((f) => f.startsWith("thumb-direct."));
@@ -166,4 +242,14 @@ export async function downloadYtDlpThumbnailBytes(url: string, workdir: string) 
   } catch {
     return null;
   }
+}
+
+async function validateSocialUrl(value: string) {
+  const { url } = await validateExternalUrl(value);
+  if (
+    !/(^|\.)(youtube\.com|youtu\.be|instagram\.com|tiktok\.com)$/.test(
+      url.hostname,
+    )
+  )
+    throw new Error("Questo sito non è una fonte video supportata.");
 }

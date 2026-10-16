@@ -1,6 +1,8 @@
 import { createRecipeId } from "@/lib/recipe-id";
 
 export type Nutrition = {
+  confidence?: "high" | "medium" | "low";
+  consistencyWarning?: string;
   calories?: number;
   protein?: number;
   carbs?: number;
@@ -12,6 +14,7 @@ export type Nutrition = {
 };
 
 export type Recipe = {
+  structuredIngredients?: import("@/lib/ingredients").StructuredIngredient[];
   revision?: number;
   updatedAt?: string;
   archivedAt?: string | null;

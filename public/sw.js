@@ -1,9 +1,15 @@
-const CACHE = "ricettario-shell-v6-3-garden";
-const SHELL = ["/", "/manifest.webmanifest", "/icons/icon-192.png", "/icons/icon-512.png"];
+const CACHE = "ricettario-shell-v7-official-brand";
+const SHELL = ["/", "/manifest.webmanifest", "/icons/icon-192.png", "/icons/icon-512.png", "/icons/apple-touch-icon.png", "/icons/favicon-32.png", "/icons/favicon-16.png", "/icons/ricettario-ai.ico", "/favicon.ico", "/branding/ricettario-ai-mark.webp", "/branding/ricettario-ai-logo-login.webp"];
 
 self.addEventListener("install", (event) => {
   self.skipWaiting();
-  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL)).catch(() => {}));
+  event.waitUntil(caches.open(CACHE).then(async(cache) => {
+    await cache.addAll(SHELL);
+    // Cache the actual compiled shell too, including first-visit JS and CSS.
+    const home=await cache.match('/');const html=await home?.text()||'';
+    const assets=[...new Set([...html.matchAll(/(?:src|href)="(\/_next\/static\/[^"\s]+\.(?:js|css)(?:\?[^"\s]*)?)"/g)].map(match=>match[1].replace(/&amp;/g,'&')))];
+    await cache.addAll(assets.slice(0,80));
+  }).catch(() => {}));
 });
 
 self.addEventListener("activate", (event) => {
@@ -33,6 +39,6 @@ self.addEventListener("fetch", (event) => {
         }
         return response;
       })
-      .catch(async () => (await caches.match(event.request)) || new Response("Connessione non disponibile", { status: 503, headers: { "content-type": "text/plain; charset=utf-8" } }))
+      .catch(async () => (await caches.match(event.request)) || (event.request.mode==='navigate'?await caches.match('/'):undefined) || new Response("Connessione non disponibile", { status: 503, headers: { "content-type": "text/plain; charset=utf-8" } }))
   );
 });

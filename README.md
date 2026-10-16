@@ -1,87 +1,61 @@
-# Ricettario AI 6.3 — La tua cucina, ogni giorno
+# Ricettario AI 7.0
 
-## Novità della 6.3
+Ricettario personale con l’identità ufficiale verde/salvia e crema. Ricette, immagini, versioni, dispensa e piano pasti sono conservati su Supabase; il browser mantiene una copia per consultazione offline.
 
-- Palette salvia con aspetto chiaro e scuro automatico, superfici morbide e illustrazione locale.
-- Titoli completi sotto le foto, senza sovrapposizione alle immagini o ai preferiti.
-- Griglie adattabili e testi lunghi contenuti in ricette, ingredienti, spesa, cataloghi e nomi ZIP.
-- Dettaglio ricetta con testata che cresce con il titolo; testi del sistema leggibili senza ellissi.
-- Editor e impostazioni più leggibili, pulsanti comodi da telefono e accesso da tastiera.
+## Funzioni
 
-Verificata in Chrome a 320, 390, 768 e 1280 px, in modalità chiara e scura,
-con titoli, ingredienti e nomi file molto lunghi. Le prove coprono anche salvataggio,
-bozze, errori di rete, spesa offline e accesso. La 6.3 non aggiunge migrazioni:
-usa `001_backend_safety` e `002_shopping_read` della 6.2.
+- Import da siti web, testo, foto, PDF e social video. JSON-LD, microdata e testo strutturato vengono letti prima di ricorrere all’AI. Ogni risultato apre l’editor e richiede un salvataggio esplicito.
+- Coda fino a 20 link, elaborati uno alla volta; controllo duplicati prima dell’AI.
+- Ingredienti strutturati con frazioni e intervalli; stringhe legacy conservate. Porzioni temporanee, aggregazione della spesa con unità compatibili e reparti facoltativi.
+- Dispensa, piano settimanale, storico delle preparazioni con note e voto separati dalle note della ricetta.
+- Gallery con ricerca sul server, 20 elementi per pagina, Griglia/Lista/Compatta, preferiti e archivio.
+- Modalità cucina a singolo passaggio, swipe, tastiera, schermo acceso dove supportato, più timer conservati in IndexedDB e ricalcolati dall’orario reale.
+- Tema Sistema/Chiaro/Scuro, layout da 320px, logo e icone ufficiali invariati.
+- Foto con crop e fotocamera, nomi immutabili, originale e varianti medium/thumbnail.
+- Backup ZIP con JSON e fotografie fisiche, checksum e importazione additiva. Backup preventivo verificato prima di import, recupero, migrazioni e aggiornamenti.
 
-## Novità della 6.1
+## Configurazione
 
-- Bozza automatica sul dispositivo, recuperata dopo ricaricamento e conservata durante i cambi di scheda. I file video devono essere selezionati nuovamente dopo un ricaricamento.
-- Inserimento manuale delle ricette senza chiamare OpenAI, con controllo dei campi e protezione dai doppi salvataggi.
-- Ricerca per più parole in qualsiasi ordine, senza distinzione di accenti, riepilogo della raccolta e azzeramento dei filtri.
-- Lista della spesa con errori di sincronizzazione visibili, coda locale dei cambiamenti, riprova e ripartenza alla riconnessione. Le richieste dello stesso dispositivo sono serializzate; modifiche simultanee da dispositivi diversi continuano a seguire l’ultimo salvataggio.
-- Quantità diverse degli ingredienti mantenute in lista, rimozione degli acquistati e annullamento dello svuotamento.
-- Dosi con frazioni (`1/2`, `1 1/2`, `½`), timer basato sull’orario reale e ricalcolo al ritorno alla pagina. Per ricevere l’avviso del timer occorre lasciare aperta la scheda ricetta; non sono notifiche di sistema in background.
-- Modifiche conservate in caso di errore, avviso prima di uscire senza salvare, focus nella scheda ricetta, tasto Esc e pulsanti con etichette accessibili.
-- Cataloghi, ricette e spesa caricati indipendentemente; recupero locale additivo che non sovrascrive le ricette già presenti sul server.
-- Validazione server dei dati, timeout delle richieste, stato del backup visibile e foto mancanti con recupero manuale.
-- Interfaccia più leggibile da telefono, campi senza zoom automatico, supporto alle preferenze di movimento ridotto e cache che non conserva risposte di errore.
+Node.js 24, npm 11. Copia `.env.example` in `.env.local` e inserisci i valori sul tuo dispositivo, oppure in Vercel. Non inviare password o chiavi in chat e non committare `.env.local`.
 
-## Sviluppo e verifiche
+Obbligatorie: `APP_PASSWORD`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`. `DATABASE_URL` serve per eseguire le migrazioni. `OPENAI_API_KEY` serve solo quando la fonte richiede AI. Nessuna chiave amministrativa deve essere `NEXT_PUBLIC_`.
 
-Richiede Node.js 24 e npm. `npm ci` installa le dipendenze bloccate nel lockfile.
+Il motore social usa la release yt-dlp 2026.08.19 con SHA-256 verificato. Per sostituire la release imposta `YTDLP_VERSION`, `YTDLP_SHA256` (Linux) e `YTDLP_WINDOWS_SHA256` (Windows). I modelli si possono configurare con `OPENAI_RECIPE_MODEL` e `OPENAI_AUDIO_MODEL`. Nessun aggiornamento automatico di questi strumenti.
 
-- `npm test`: test delle dosi, bozze, ricerca, validazione, UUID ed errori API.
-- `npm run typecheck`: controllo TypeScript.
-- `npm run build`: compilazione di produzione, possibile anche senza credenziali locali; le API richiedono la configurazione al momento dell’uso.
-- `npm run test:browser`: prove desktop/mobile in Chrome, con dati e API simulate. Richiede Google Chrome installato; nessuna ricetta reale viene modificata.
+## Verifiche locali
 
-La distribuzione avviene dal ramo `main` tramite Vercel, dopo avere verificato il backup dal sito. Nessuna migrazione del database è richiesta per la 6.1.
+```powershell
+npm ci
+npm run typecheck
+npm test
+npm run build
+npm run test:e2e
+```
 
-## Correzione salvataggio 6.0.1
+Su Windows i test usano Google Chrome. Su Linux installa Chromium con `npx playwright install --with-deps chromium`. Per provare la build compilata, imposta `PLAYWRIGHT_PRODUCTION=1` prima dei test. Le prove usano API simulate e PostgreSQL isolato PGlite, senza ricette reali né chiamate AI.
 
-Gli ID delle bozze sono UUID validi anche nei browser senza `crypto.randomUUID`.
-Tempi e porzioni decimali vengono arrotondati per eccesso per le colonne intere di Supabase.
-Gli errori di salvataggio compaiono anche accanto al pulsante Salva; i campi numerici vuoti restano non specificati.
+`npm run dev` avvia lo sviluppo. La CI verifica installazione, TypeScript, test, build e browser sulle pull request; non pubblica Production.
 
-Verifica di regressione (Node.js 24): `node --test tests/recipe-save.test.mjs`.
+## Migrazioni e rilascio
 
-Per l'updater ZIP di questo repository, configurare su Vercel `GITHUB_OWNER=Gancone`,
-`GITHUB_REPO=ricettario-ai`, `GITHUB_BRANCH=main` e `GITHUB_UPDATE_TOKEN` con accesso
-al repository e permesso Contents in lettura e scrittura. Non inserire il token nel codice.
-L'aggiornamento conserva il controllo del backup precedente alla pubblicazione.
+Vedi `docs/V7-REPORT.md` per la procedura completa, i risultati e i limiti verificati.
 
-Aggiornamento progettato per uso personale, mobile-first e senza nuovi servizi a pagamento.
+1. Conserva un backup dei dati attuali e pubblica il ramo `completion/ricettario-v7` come Preview.
+2. Verifica le variabili nella Preview. Prima di usare il database reale, approva separatamente la migrazione e il rilascio.
+3. Esegui `npm run db:migrate` con la connessione amministrativa corretta, oppure il modulo autenticato `/api/admin/migrations` del deployment v7. Il runner verifica un backup prima di applicare i file SQL mancanti; non modificare gli SQL già applicati.
+4. Controlla `/api/health`, ricette legacy, modifica/salvataggio, fotografie, planner, dispensa, spesa, export/import e offline.
+5. Dopo la verifica e l’approvazione, integra il ramo in main e pubblica Production. Verifica di nuovo sul dominio ufficiale.
 
-## Cosa cambia
+Non usare vecchi deployment per le migrazioni v7. Non fare reset del database. Per risolvere problemi di una migrazione già applicata prepara una nuova migrazione additiva.
 
-- Ricette sempre su Supabase, con copia locale e snapshot automatici.
-- Backup pre-aggiornamento obbligatorio: se fallisce, l'aggiornamento non parte.
-- Accesso personale con cookie annuale. `APP_PASSWORD` è opzionale: se non configurata viene usata `UPDATE_PASSWORD` già presente su Vercel.
-- Nessuna seconda password per installare gli ZIP dopo l'accesso al Ricettario.
-- Controllo duplicati prima di OpenAI: lo stesso link non viene estratto due volte.
-- Cataloghi base sempre disponibili, catalogo suggerito automaticamente e creazione catalogo direttamente nel form.
-- Porzioni e valori nutrizionali stimati anche quando il video non li dichiara.
-- Note della fonte separate dalle note personali.
-- Modifica completa delle ricette già salvate.
-- Preferiti e Archivio senza cancellazione permanente.
-- Copertine salvate direttamente su Supabase Storage durante l'estrazione; recupero massivo solo manuale.
-- PDF con fotografia e note separate.
-- Lista della spesa sincronizzata via Supabase Storage.
-- Ricerca anche in procedimento e note, più filtri rapidi per tempo/calorie/proteine.
-- Porzioni ridimensionabili, timer dai passaggi e Wake Lock per tenere lo schermo acceso.
-- Stato sistema nelle Impostazioni.
-- Aggiornamenti futuri puliscono automaticamente i file obsoleti nelle cartelle gestite.
+## Aggiornamenti e conservazione
 
-## Installazione consigliata dalla v5
+L’updater web richiede `GITHUB_UPDATE_TOKEN`, `GITHUB_OWNER`, `GITHUB_REPO` e facoltativamente `GITHUB_BRANCH` come base. Prepara esclusivamente un ramo `update/...`, senza modificare main. Il token deve avere accesso solo al repository necessario; CI e Preview richiedono verifica prima del rilascio. ZIP web massimo 4 MB.
 
-Apri il sito v5 → **Altro / Impostazioni → Aggiornamenti ZIP** → seleziona `ricettario-ai-v6.zip` → installa.
+Il vecchio launcher `tools/install-v6.ps1` ora delega a `tools/prepare-update.ps1`: copia il codice in un checkout Git isolato, senza cancellare cartelle, senza copiare credenziali e senza push automatico. I dati non sono parte del pacchetto codice.
 
-La prima apertura della v6 chiede la password personale. Se non hai configurato `APP_PASSWORD`, usa la stessa `UPDATE_PASSWORD` che avevi già impostato su Vercel. Il dispositivo resta autorizzato per un anno.
+I backup completi passano tramite Storage privato per evitare il limite Vercel di 4,5 MB. Il limite applicativo è 50 MB; il link firmato di download vale 5 minuti. Gli archivi e le fotografie precedenti vengono conservati. La rimozione automatica degli orfani è rimandata per proteggere anche i backup storici.
 
-## Fallback senza Prompt
+La copia IndexedDB dipende dallo spazio del browser: conserva anche un backup ZIP esterno. Solo la spesa dispone di una coda offline con gestione dei conflitti; gli altri salvataggi richiedono rete. I timer riprendono correttamente al ritorno nell’app; non promettono notifiche di sistema quando il browser è chiuso.
 
-Se l'updater web non fosse disponibile, estrai lo ZIP e fai doppio clic su `INSTALLA-V6.vbs`. Non serve aprire Prompt o PowerShell manualmente.
-
-## Dati
-
-La v6 non esegue `DROP`, `TRUNCATE` o cancellazioni della tabella `recipes`. Le nuove funzioni (preferiti, archivio, note dalla fonte) usano il JSON `nutrition` già esistente e non richiedono modifiche SQL manuali.
+Il collegamento Windows usa l’icona stabile in `Desktop/TOOLS/LOGHI`, indipendente dalla posizione della foto originale. Gli asset ufficiali non vengono rigenerati o sostituiti.

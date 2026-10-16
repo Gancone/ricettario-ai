@@ -6,7 +6,7 @@ import { persistRecipeImage, persistRecipeImageBytes } from "@/lib/image-storage
 import { downloadYtDlpThumbnailBytes } from "@/lib/ytdlp";
 import { guard } from "@/lib/backend";
 import { applyRecipe } from "@/lib/recipe-store";
-import { errorResponse, readForm, uuid } from "@/lib/validation";
+import { errorResponse, readForm, uuid, revisionSchema, HttpError } from "@/lib/validation";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -21,6 +21,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     if (contentType.includes("multipart/form-data")) {
       const form = await readForm(request, 6 * 1024 * 1024);
+      if(!form.get('expectedRevision'))throw new HttpError(428,'Ricarica la ricetta: revisione richiesta.');
+      const expected=revisionSchema.parse(Number(form.get('expectedRevision')));
       const image = form.get("image") as File | null;
       if (!image || image.size === 0) return Response.json({ error: "Seleziona una foto." }, { status: 400 });
       if (image.size > 5 * 1024 * 1024) return Response.json({ error: "Foto troppo grande. Massimo 5 MB." }, { status: 413 });
@@ -28,8 +30,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       if (!["image/jpeg", "image/png", "image/webp"].includes(mime)) return Response.json({ error: "Formato foto non supportato." }, { status: 415 });
       const { data: current, error: currentError } = await supabase.from("recipes").select("*").eq("id", id).single();
       if (currentError) throw currentError;
+      if(current.revision!==expected)throw new HttpError(409,'La ricetta è cambiata. Ricarica prima di sostituire la foto.');
       const stable = await persistRecipeImageBytes(id, Buffer.from(await image.arrayBuffer()), mime, false);
-      return Response.json(await applyRecipe(id, current.revision ?? 1, { image_url: stable }, "before_update"));
+      return Response.json(await applyRecipe(id, expected, { image_url: stable }, "before_update"));
     }
 
     const { data: recipe, error } = await supabase

@@ -15,7 +15,8 @@ export async function PUT(request: Request) {
   try {
     await requireSchema(); const body = await readJson(request, 2 * 1024 * 1024); const items = Array.isArray(body?.items) && body.items.length <= 10000 ? body.items.map((item: unknown) => shoppingItemSchema.parse(item)) : null;
     if (!items) throw new HttpError(400, "Lista non valida o superiore a 10000 elementi.");
-    const result = await supabase.rpc("shopping_apply", { p_expected: body.revision ?? null, p_items: items, p_replace: true }); if (result.error) throw result.error;
+    const enriched=items.some((item:{ingredient_key?:string})=>item.ingredient_key);
+    const result = await supabase.rpc(enriched?"shopping_apply_v7":"shopping_apply", { p_expected: body.revision ?? null, p_items: items, p_replace: true }); if (result.error) throw result.error;
     if (result.data?.conflict) return Response.json(result.data, { status: 409 });
     return Response.json(result.data);
   } catch (error) { return errorResponse(error); }

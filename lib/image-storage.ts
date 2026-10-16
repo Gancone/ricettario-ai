@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { supabase } from './supabase';
 import { safeFetchExternal } from './safe-fetch';
 import { uuid,uploadMetadataSchema,HttpError } from './validation';
+import {generateImageVariants} from './image-variants';
 export const IMAGE_BUCKET='recipe-images';
 export const IMAGE_MAX_BYTES=Math.min(10*1024*1024,Math.max(1024,Number(process.env.IMAGE_MAX_BYTES)||5*1024*1024));
 export const IMAGE_TYPES=['image/jpeg','image/png','image/webp'];
@@ -22,7 +23,7 @@ export function assertImage(bytes:Buffer,type:string) {
 }
 export function immutableImagePath(id:string,type:string,temporary=false){
  uuid.parse(id);const extension=type==='image/png'?'png':type==='image/webp'?'webp':'jpg';
- return (temporary?'temporary/':'')+id+'/'+Date.now()+'-'+randomUUID()+'.'+extension;
+ return (temporary?'temporary/':'')+id+'/'+Date.now()+'-'+randomUUID()+'-v7.'+extension;
 }
 export function ownImagePath(url:string){
  try{const source=new URL(url);const base=new URL(process.env.SUPABASE_URL||'');
@@ -34,8 +35,11 @@ export function ownImagePath(url:string){
 }
 export async function persistRecipeImageBytes(id:string,bytes:Buffer,type='image/jpeg',temporary=false){
  uploadMetadataSchema.parse({recipeId:id,contentType:type,size:bytes.length});assertImage(bytes,type);await ensureImageBucket();
+ const variants=await generateImageVariants(bytes);
  const key=immutableImagePath(id,type,temporary);const {error}=await supabase.storage.from(IMAGE_BUCKET).upload(key,bytes,{contentType:type,upsert:false,cacheControl:'31536000'});
- if(error)throw error;return supabase.storage.from(IMAGE_BUCKET).getPublicUrl(key).data.publicUrl;
+ if(error)throw error;
+ for(const [kind,payload]of [['thumb',variants.thumbnail],['medium',variants.medium]] as const){const variant=key.replace(/\.[^.]+$/,'.'+kind+'.webp');const result=await supabase.storage.from(IMAGE_BUCKET).upload(variant,payload,{contentType:'image/webp',upsert:false,cacheControl:'31536000'});if(result.error)throw result.error;}
+ return supabase.storage.from(IMAGE_BUCKET).getPublicUrl(key).data.publicUrl;
 }
 export async function persistRecipeImage(id:string,url?:string,temporary=false):Promise<string>{
  if(!url)return '';uuid.parse(id);

@@ -1,19 +1,19 @@
 {
   "name": "Ricettario AI",
-  "version": "6.3.0",
+  "version": "7.0.0",
   "channel": "stable",
-  "description": "Interfaccia salvia chiara e scura, titoli completi sulle schede, testi lunghi contenuti, editor e impostazioni leggibili, navigazione comoda da telefono.",
+  "description": "Cucina personale: dispensa, piano pasti, storico, ingredienti strutturati, backup portabili con fotografie, import universale, offline e interfaccia accessibile.",
   "managedRoots": [
     "app",
     "components",
     "lib",
     "public",
     "types",
+    "tools",
     "database",
-    "tools"
+    "tests",
+    ".github",
+    "docs"
   ],
-  "delete": [
-    "lib/update-auth.ts"
-  ],
-  "notes": "Richiede le migrazioni 001_backend_safety e 002_shopping_read della versione 6.2. Il miglioramento frontend 6.3 non aggiunge migrazioni. Il backup pre-update è obbligatorio."
+  "notes": "Richiede le migrazioni additive 003-005. Conserva tutte le ricette e il logo ufficiale. Updater su ramo Preview; nessun rilascio Production automatico. Backup completo prima di importazione, ripristino, migrazioni e aggiornamenti."
 }

@@ -1,0 +1,2 @@
+import sharp from 'sharp';
+export async function generateImageVariants(bytes:Buffer){const image=sharp(bytes,{limitInputPixels:40_000_000}).rotate();const metadata=await image.metadata();if(!metadata.width||!metadata.height)throw new Error('Dimensioni immagine non valide.');const thumbnail=await image.clone().resize(480,480,{fit:'inside',withoutEnlargement:true}).webp({quality:78}).toBuffer();const medium=await image.clone().resize(1400,1400,{fit:'inside',withoutEnlargement:true}).webp({quality:85}).toBuffer();return{thumbnail,medium};}

@@ -63,18 +63,21 @@ for (const width of [320, 390, 768, 1280]) {
       await page.emulateMedia({ colorScheme, reducedMotion: 'reduce' });
       await fixtures(page);
       await expect(page.getByRole('heading', { name: 'Le mie ricette' })).toBeVisible();
-      await containedText(page.locator('.recipe-card-copy h3'));
-      await containedText(page.locator('.recipe-card-category'));
+      // v7 deliberately clamps the card title to three lines. Its full value
+      // remains available in the accessible button name and native title.
+      await expect(page.locator('.recipe-card-copy h3')).toHaveAttribute('title',recipe.title);
+      expect(await page.locator('.recipe-card-copy h3').evaluate(el=>el.scrollWidth<=el.clientWidth+1)).toBe(true);
+      await expect(page.getByRole('button',{name:`Apri ${recipe.title}`,exact:true})).toBeVisible();
       await noHorizontalOverflow(page);
       await page.screenshot({ path: `test-results/layout-${width}-${colorScheme}-home.png`, fullPage: true });
 
       // Category becomes the page heading; it must wrap as well.
-      await page.getByRole('button', { name: `${category} 1`, exact: true }).click();
+      await page.getByRole('button', { name: category, exact: true }).click();
       await containedText(page.locator('.recipes-hero h1'));
       await noHorizontalOverflow(page);
       await page.getByRole('button', { name: `Apri ${recipe.title}`, exact: true }).click();
       await containedText(page.locator('.hero-copy h2'));
-      expect(await page.locator('.hero-copy').evaluate(el => el.getBoundingClientRect().top >= el.parentElement!.getBoundingClientRect().top + 80)).toBe(true);
+      expect(await page.locator('.hero-copy h2').evaluate(el => el.getBoundingClientRect().top >= el.closest('.recipe-hero')!.getBoundingClientRect().top + 80)).toBe(true);
       expect(await page.locator('.recipe-modal').evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
       await containedText(page.locator('.cook-row').first().locator('span').last());
       await containedText(page.locator('.step-row').first().locator('span').last());
@@ -88,10 +91,13 @@ for (const width of [320, 390, 768, 1280]) {
       await page.screenshot({ path: `test-results/layout-${width}-${colorScheme}-shopping.png`, fullPage: true });
 
       await page.getByRole('button', { name: 'Altro', exact: true }).filter({ visible: true }).click();
+      await page.getByRole('button',{name:'Impostazioni',exact:true}).click();
+      await page.getByText('Avanzate / Diagnostica',{exact:true}).click();
+      await page.getByRole('button',{name:'Controlla sistema',exact:true}).click();
       await containedText(page.locator('.system-row small').filter({ hasText: longWord }));
       await containedText(page.locator('.category-manager-row > span').filter({ hasText: category }));
-      await page.locator('.update-drop input').setInputFiles({ name: `${longWord}.zip`, mimeType: 'application/zip', buffer: Buffer.from('layout test only') });
-      await containedText(page.locator('.update-drop strong'));
+      await page.getByLabel('Pacchetto aggiornamento',{exact:true}).setInputFiles({ name: `${longWord}.zip`, mimeType: 'application/zip', buffer: Buffer.from('layout test only') });
+      await containedText(page.locator('.update-file-name'));
       await noHorizontalOverflow(page);
       await page.screenshot({ path: `test-results/layout-${width}-${colorScheme}-settings.png`, fullPage: true });
 
@@ -99,6 +105,7 @@ for (const width of [320, 390, 768, 1280]) {
       await page.getByRole('button', { name: 'Scrivi a mano' }).click();
       await page.getByLabel('Titolo', { exact: true }).fill(recipe.title);
       await page.getByLabel('Ingredienti', { exact: true }).fill(recipe.ingredients.join('\n'));
+      await page.locator('summary').filter({hasText:'Procedimento'}).click();
       await page.getByLabel('Procedimento', { exact: true }).fill(recipe.steps.join('\n'));
       await containedText(page.locator('.editor-accordion summary').filter({ hasText: 'Tempi, porzioni e nutrizione' }));
       await noHorizontalOverflow(page);

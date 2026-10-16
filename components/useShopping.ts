@@ -1,98 +1,23 @@
 "use client";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { api, jsonBody } from "@/lib/api-client";
-import { validShoppingItems, type ShoppingItem } from "@/lib/shopping";
-
-const KEY = "ricettario-shopping-v6";
-const PENDING = "ricettario-shopping-pending";
-const REVISION_KEY = "ricettario-shopping-server-revision";
-export function useShopping(authenticated: boolean) {
-  const [items, setItems] = useState<ShoppingItem[]>([]);
-  const [status, setStatus] = useState("Caricamento lista…");
-  const current = useRef<ShoppingItem[]>([]);
-  const revision = useRef(0);
-  const serverRevision = useRef<number | null>(null);
-  const pending = useRef(false);
-  const inFlight = useRef(false);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const active = useRef(authenticated);
-  active.current = authenticated;
-
-  const sync = useCallback(async () => {
-    if (!active.current || inFlight.current || !pending.current) return;
-    inFlight.current = true;
-    setStatus("Sincronizzazione…");
-    try {
-      if(serverRevision.current===null){
-        const remote=await api<{items:ShoppingItem[];revision:number}>("/api/state/shopping");
-        if(!validShoppingItems(remote.items)||!Number.isSafeInteger(remote.revision))throw new Error("Lista ricevuta non valida.");
-        // A legacy/offline list without a known base may only add missing IDs.
-        const ids=new Set(remote.items.map(item=>item.id));
-        current.current=[...remote.items,...current.current.filter(item=>!ids.has(item.id))];
-        serverRevision.current=remote.revision;setItems(current.current);
-        try{localStorage.setItem(KEY,JSON.stringify(current.current));localStorage.setItem(REVISION_KEY,String(remote.revision));}catch{}
-      }
-      while (pending.current && active.current) {
-        const sent = revision.current;
-        const result: { items?: ShoppingItem[]; revision?: number } = await api("/api/state/shopping", { method: "PUT", ...jsonBody({ items: current.current, revision: serverRevision.current }) });
-        serverRevision.current = result.revision ?? serverRevision.current;
-        try{localStorage.setItem(REVISION_KEY,String(serverRevision.current));}catch{}
-        if (sent === revision.current) {
-          if(Array.isArray(result.items)){current.current=result.items;setItems(result.items);try{localStorage.setItem(KEY,JSON.stringify(result.items));}catch{}}
-          pending.current = false;
-          try { localStorage.removeItem(PENDING); } catch {}
-        }
-      }
-      if (active.current) setStatus("Sincronizzata");
-    } catch (error) {
-      if (active.current) setStatus(error instanceof Error ? `Da sincronizzare · ${error.message}` : "Da sincronizzare. Riprova.");
-    } finally { inFlight.current = false; }
-  }, []);
-
-  useEffect(() => {
-    if (!authenticated) return;
-    let cancelled = false;
-    const started = revision.current;
-    try {
-      const saved = JSON.parse(localStorage.getItem(KEY) || localStorage.getItem("ricettario-shopping-v5") || "[]");
-      if (validShoppingItems(saved)) { current.current = saved; setItems(saved); }
-      pending.current = localStorage.getItem(PENDING) === "1";
-      const savedRevision=Number(localStorage.getItem(REVISION_KEY));
-      serverRevision.current=Number.isSafeInteger(savedRevision)&&savedRevision>0?savedRevision:null;
-    } catch {}
-    if (pending.current) void sync();
-    else api<ShoppingItem[] | { items: ShoppingItem[]; revision?: number }>("/api/state/shopping").then((data) => {
-      if (cancelled || revision.current !== started || pending.current) return;
-      const payload = Array.isArray(data) ? data : data.items;
-      if (!Array.isArray(data)) serverRevision.current = data.revision ?? null;
-      if (!validShoppingItems(payload)) throw new Error("Lista ricevuta non valida.");
-      current.current = payload; setItems(payload); setStatus("Sincronizzata");
-      try { localStorage.setItem(KEY, JSON.stringify(payload));localStorage.setItem(REVISION_KEY,String(serverRevision.current)); } catch {}
-    }).catch(() => { if (!cancelled) setStatus("Copia locale · connessione non disponibile"); });
-    const reconnect = () => { void sync(); };
-    window.addEventListener("online", reconnect);
-    return () => { cancelled = true; window.removeEventListener("online", reconnect); if (timer.current) clearTimeout(timer.current); };
-  }, [authenticated, sync]);
-
-  const update = (next: ShoppingItem[]) => {
-    current.current = next; revision.current++; pending.current = true; setItems(next);
-    try { localStorage.setItem(KEY, JSON.stringify(next)); localStorage.setItem(PENDING, "1"); setStatus("Salvata sul dispositivo · sincronizzazione in attesa"); }
-    catch { setStatus("Memoria locale non disponibile. Mantieni aperta la pagina fino alla sincronizzazione."); }
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => { void sync(); }, 450);
-  };
-  const retry = async () => {
-    if (pending.current) return sync();
-    setStatus("Caricamento lista…");
-    const started = revision.current;
-    try {
-      const data = await api<ShoppingItem[] | { items: ShoppingItem[]; revision?: number }>("/api/state/shopping");
-      if (started !== revision.current) return;
-      const payload = Array.isArray(data) ? data : data.items; if (!Array.isArray(data)) serverRevision.current = data.revision ?? null;
-      if (!validShoppingItems(payload)) throw new Error("Lista non valida");
-      current.current = payload; setItems(payload); setStatus("Sincronizzata");
-      try { localStorage.setItem(KEY, JSON.stringify(payload));localStorage.setItem(REVISION_KEY,String(serverRevision.current)); } catch {}
-    } catch { setStatus("Copia locale · connessione non disponibile"); }
-  };
-  return { items, update, status, retry };
+import {useCallback,useEffect,useRef,useState} from 'react';
+import {api,ApiError,jsonBody} from '@/lib/api-client';
+import {validShoppingItems} from '@/lib/shopping';
+import type {SmartShoppingItem as ShoppingItem} from '@/lib/smart-shopping';
+import {readOffline,writeOffline} from '@/lib/offline-db';
+type Cache={items:ShoppingItem[];pending:boolean;baseRevision:number|null};
+export function useShopping(authenticated:boolean){
+ const[items,setItems]=useState<ShoppingItem[]>([]),[status,setStatus]=useState('Caricamento lista…'),[conflict,setConflict]=useState(false);
+ const current=useRef<ShoppingItem[]>([]),base=useRef<number|null>(null),pending=useRef(false),flight=useRef(false),revision=useRef(0),active=useRef(authenticated),timer=useRef<ReturnType<typeof setTimeout>|null>(null);active.current=authenticated;
+ const persist=useCallback(()=>writeOffline<Cache>('shopping',{items:current.current,pending:pending.current,baseRevision:base.current}),[]);
+ const remote=useCallback(async()=>{const value=await api<ShoppingItem[]|{items:ShoppingItem[];revision:number}>('/api/state/shopping');const rows=Array.isArray(value)?value:value.items;if(!validShoppingItems(rows))throw new Error('Lista ricevuta non valida.');return{items:rows,revision:Array.isArray(value)?null:value.revision};},[]);
+ const sync=useCallback(async()=>{if(!active.current||flight.current||!pending.current)return;flight.current=true;setStatus('Sincronizzazione…');try{
+  if(base.current===null){const data=await remote();if(data.revision===null)throw new Error('Il server deve essere aggiornato prima di sincronizzare.');const ids=new Set(data.items.map(row=>row.id));current.current=[...data.items,...current.current.filter(row=>!ids.has(row.id))];base.current=data.revision;setItems(current.current);}
+  while(pending.current&&active.current){const sent=revision.current;const result:{items:ShoppingItem[];revision:number}=await api('/api/state/shopping',{method:'PUT',...jsonBody({items:current.current,revision:base.current})});if(!validShoppingItems(result.items)||!Number.isSafeInteger(result.revision))throw new Error('Conferma di sincronizzazione non valida.');base.current=result.revision;if(sent===revision.current){current.current=result.items;setItems(result.items);pending.current=false;}await persist();}
+  if(active.current){setStatus('Sincronizzata');setConflict(false);}
+ }catch(error){if(error instanceof ApiError&&error.status===409)setConflict(true);if(active.current)setStatus('Da sincronizzare · '+(error instanceof Error?error.message:'Connessione non disponibile'));}finally{flight.current=false;}},[persist,remote]);
+ const reload=useCallback(async()=>{if(pending.current)return sync();const started=revision.current;try{const data=await remote();if(started!==revision.current||pending.current||!active.current)return;current.current=data.items;base.current=data.revision;setItems(data.items);await persist();setStatus('Sincronizzata');}catch{if(active.current)setStatus('Copia locale · connessione non disponibile');}},[remote,persist,sync]);
+ useEffect(()=>{if(!authenticated)return;let stopped=false;const start=revision.current;void(async()=>{let saved:Cache|undefined;try{saved=await readOffline<Cache>('shopping');if(!saved){const rows=JSON.parse(localStorage.getItem('ricettario-shopping-v6')||localStorage.getItem('ricettario-shopping-v5')||'[]');if(validShoppingItems(rows))saved={items:rows,pending:localStorage.getItem('ricettario-shopping-pending')==='1',baseRevision:null};}}catch{}if(stopped||start!==revision.current)return;if(saved&&validShoppingItems(saved.items)){current.current=saved.items;base.current=saved.baseRevision;pending.current=saved.pending;setItems(saved.items);}if(pending.current)void sync();else void reload();})();const connect=()=>void reload();window.addEventListener('online',connect);return()=>{stopped=true;window.removeEventListener('online',connect);if(timer.current)clearTimeout(timer.current);};},[authenticated,reload,sync]);
+ const update=(next:ShoppingItem[])=>{current.current=next;pending.current=true;revision.current++;setItems(next);setStatus('Salvataggio sul dispositivo…');void persist().then(()=>{if(pending.current)setStatus('Salvata sul dispositivo · sincronizzazione in attesa');}).catch(()=>setStatus('Archivio offline non disponibile. Mantieni aperta la pagina.'));if(timer.current)clearTimeout(timer.current);timer.current=setTimeout(()=>void sync(),450);};
+ const resolve=async()=>{if(!confirm('Conservare una copia delle modifiche locali e caricare la lista aggiornata dal server?'))return;await writeOffline('shopping-conflict-'+Date.now(),current.current);const data=await remote();current.current=data.items;base.current=data.revision;pending.current=false;setItems(data.items);setConflict(false);await persist();setStatus('Sincronizzata · copia precedente conservata sul dispositivo');};
+ return{items,status,update,retry:reload,conflict,resolve};
 }
